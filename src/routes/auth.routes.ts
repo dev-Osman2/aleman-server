@@ -1,15 +1,21 @@
 import { Router } from "express";
-import { registerUser, loginUser, getMe } from "../controllers/auth.controller";
+import {
+  registerUser,
+  loginUser,
+  getMe,
+  updateProfile,
+  deleteAccount,
+} from "../controllers/auth.controller";
 
 const router = Router();
 
-// POST /api/auth/register
+// مسارات المصادقة الأساسية
 router.post("/register", registerUser);
-
-// POST /api/auth/login
 router.post("/login", loginUser);
-
-// GET /api/auth/me
 router.get("/me", getMe);
+
+// مسارات إدارة الحساب الشخصي
+router.put("/profile", updateProfile);
+router.delete("/account", deleteAccount);
 
 export default router;
