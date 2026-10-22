@@ -1,0 +1,96 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// صلاحيات المستخدم
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+// طرق الدفع المتاحة أونلاين
+enum PaymentMethod {
+  INSTAPAY
+  VODAFONE_CASH
+}
+
+// حالات الطلب الثلاث فقط كما حددتها
+enum OrderStatus {
+  PENDING   // قيد المراجعة
+  CONFIRMED // مؤكد
+  CANCELLED // ملغي
+}
+
+// 1. جدول المستخدمين
+model User {
+  id        String   @id @default(uuid())
+  name      String
+  phone     String   @unique
+  email     String   @unique
+  password  String
+  role      Role     @default(CUSTOMER)
+  createdAt DateTime @default(now())
+
+  orders    Order[]
+}
+
+// 2. جدول الكتب (المنتجات)
+model Book {
+  id              String      @id @default(uuid())
+  code            Int         @unique // كود الكتاب المميز
+  title           String
+  description     String      // الوصف المختصر للكارت
+  fullDescription String?     // الوصف التفصيلي لصفحة الكتاب الداخلي
+  price           Float       // السعر الأساسي
+  oldPrice        Float?      // السعر القديم (اختياري للخصومات)
+  quantity        Int         @default(0) // كمية المخزون المتاحة (تنقص مع الشراء)
+  category        String      // التصنيف (مهم للفلترة ولنظام الترشيحات لاحقاً)
+  image           String
+
+  // حقول اختيارية كما طلبت
+  author          String?
+  publisher       String?
+  pagesCount      Int?
+
+  createdAt       DateTime    @default(now())
+
+  orderItems      OrderItem[]
+}
+
+// 3. جدول الطلبات (توصيل للمنازل فقط)
+model Order {
+  id             Int           @id @default(autoincrement()) // رقم الفاتورة التسلسلي (1, 2, 3...)
+  address        String        // العنوان التفصيلي (إجباري لأن كل الطلبات توصيل للمنازل)
+  notes          String?       // ملاحظات إضافية (اختياري)
+  paymentMethod  PaymentMethod
+  transferNumber String        // الرقم المحول منه
+  subtotal       Float         // مجموع الكتب
+  deliveryFee    Float         // رسوم التوصيل
+  total          Float         // الإجمالي النهائي
+  status         OrderStatus   @default(PENDING)
+  createdAt      DateTime      @default(now())
+
+  // ربط الطلب بحساب العميل (نأخذ منه الاسم ورقم الهاتف تلقائياً)
+  userId         String
+  user           User          @relation(fields: [userId], references: [id])
+
+  items          OrderItem[]
+}
+
+// 4. جدول عناصر الطلب (الكتب المشتراة داخل كل فاتورة)
+model OrderItem {
+  id         String @id @default(uuid())
+  quantity   Int    // الكمية التي اشتراها العميل من هذا الكتاب
+  priceAtBuy Float  // سعر الكتاب لحظة الشراء
+
+  orderId    Int
+  order      Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  bookId     String
+  book       Book   @relation(fields: [bookId], references: [id])
+}
