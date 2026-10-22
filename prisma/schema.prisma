@@ -7,86 +7,124 @@ datasource db {
   url      = env("DATABASE_URL")
 }
 
-// صلاحيات المستخدم
 enum Role {
   CUSTOMER
   ADMIN
 }
 
-// طرق الدفع المتاحة أونلاين
 enum PaymentMethod {
   INSTAPAY
   VODAFONE_CASH
 }
 
-// حالات الطلب الثلاث فقط كما حددتها
 enum OrderStatus {
-  PENDING   // قيد المراجعة
-  CONFIRMED // مؤكد
-  CANCELLED // ملغي
+  PENDING
+  CONFIRMED
+  CANCELLED
 }
 
-// 1. جدول المستخدمين
+// 1. جدول المستخدمين (متوافق مع Better Auth ومخصص للمكتبة)
 model User {
-  id        String   @id @default(uuid())
-  name      String
-  phone     String   @unique
-  email     String   @unique
-  password  String
-  role      Role     @default(CUSTOMER)
-  createdAt DateTime @default(now())
+  id            String    @id @default(uuid())
+  name          String
+  phone         String    @unique
+  email         String    @unique
+  emailVerified Boolean   @default(false)
+  image         String?
+  role          Role      @default(CUSTOMER)
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @default(now()) @updatedAt // <-- إضافة @default(now()) هنا
 
-  orders    Order[]
+  orders        Order[]
+  sessions      Session[]
+  accounts      Account[]
 }
 
-// 2. جدول الكتب (المنتجات)
+// 2. جدول الجلسات لـ Better Auth
+model Session {
+  id        String   @id @default(uuid())
+  expiresAt DateTime
+  token     String   @unique
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  ipAddress String?
+  userAgent String?
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+}
+
+// 3. جدول الحسابات وكلمات المرور المشفرة
+model Account {
+  id                    String    @id @default(uuid())
+  accountId             String
+  providerId            String
+  userId                String
+  user                  User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  accessToken           String?
+  refreshToken          String?
+  idToken               String?
+  accessTokenExpiresAt  DateTime?
+  refreshTokenExpiresAt DateTime?
+  scope                 String?
+  password              String?
+  createdAt             DateTime  @default(now())
+  updatedAt             DateTime  @updatedAt
+}
+
+// 4. جدول التحقق
+model Verification {
+  id         String    @id @default(uuid())
+  identifier String
+  value      String
+  expiresAt  DateTime
+  createdAt  DateTime? @default(now())
+  updatedAt  DateTime? @updatedAt
+}
+
+// 5. جدول الكتب (كما هو)
 model Book {
   id              String      @id @default(uuid())
-  code            Int         @unique // كود الكتاب المميز
+  code            Int         @unique
   title           String
-  description     String      // الوصف المختصر للكارت
-  fullDescription String?     // الوصف التفصيلي لصفحة الكتاب الداخلي
-  price           Float       // السعر الأساسي
-  oldPrice        Float?      // السعر القديم (اختياري للخصومات)
-  quantity        Int         @default(0) // كمية المخزون المتاحة (تنقص مع الشراء)
-  category        String      // التصنيف (مهم للفلترة ولنظام الترشيحات لاحقاً)
+  description     String
+  fullDescription String?
+  price           Float
+  oldPrice        Float?
+  quantity        Int         @default(0)
+  category        String
   image           String
-
-  // حقول اختيارية كما طلبت
   author          String?
   publisher       String?
   pagesCount      Int?
-
   createdAt       DateTime    @default(now())
 
   orderItems      OrderItem[]
 }
 
-// 3. جدول الطلبات (توصيل للمنازل فقط)
+// 6. جدول الطلبات (كما هو)
 model Order {
-  id             Int           @id @default(autoincrement()) // رقم الفاتورة التسلسلي (1, 2, 3...)
-  address        String        // العنوان التفصيلي (إجباري لأن كل الطلبات توصيل للمنازل)
-  notes          String?       // ملاحظات إضافية (اختياري)
+  id             Int           @id @default(autoincrement())
+  address        String
+  notes          String?
   paymentMethod  PaymentMethod
-  transferNumber String        // الرقم المحول منه
-  subtotal       Float         // مجموع الكتب
-  deliveryFee    Float         // رسوم التوصيل
-  total          Float         // الإجمالي النهائي
+  transferNumber String
+  subtotal       Float
+  deliveryFee    Float
+  total          Float
   status         OrderStatus   @default(PENDING)
   createdAt      DateTime      @default(now())
 
-  // ربط الطلب بحساب العميل (نأخذ منه الاسم ورقم الهاتف تلقائياً)
   userId         String
   user           User          @relation(fields: [userId], references: [id])
 
   items          OrderItem[]
 }
 
-// 4. جدول عناصر الطلب (الكتب المشتراة داخل كل فاتورة)
+// 7. جدول عناصر الطلب (كما هو)
 model OrderItem {
   id         String @id @default(uuid())
-  quantity   Int    // الكمية التي اشتراها العميل من هذا الكتاب
-  priceAtBuy Float  // سعر الكتاب لحظة الشراء
+  quantity   Int
+  priceAtBuy Float
 
   orderId    Int
   order      Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)
