@@ -53,3 +53,33 @@ export const getBooks = async (req: Request, res: Response): Promise<void> => {
     });
   }
 };
+
+// جلب تفاصيل كتاب محدد بواسطة المعرف للصفحة الديناميكية /products/[id]
+export const getBookById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+
+    const book = await prisma.book.findUnique({
+      where: { id },
+    });
+
+    if (!book) {
+      res.status(404).json({
+        success: false,
+        message: "Book not found",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: book,
+    });
+  } catch (error) {
+    console.error("Error fetching book details:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error while fetching book details",
+    });
+  }
+};
