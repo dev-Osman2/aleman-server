@@ -173,6 +173,44 @@ export const deleteBook = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
+// جلب قائمة المستخدمين المسجلين في النظام (خاص بالأدمن فقط)
+export const getAdminUsers = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const users = await prisma.user.findMany({
+      where: {
+        role : {
+          not: "ADMIN"
+        }
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        phone: true,
+        role: true,
+        createdAt: true,
+        // جلب عدد الطلبات التي أنشأها كل مستخدم
+        _count: {
+          select: { orders: true },
+        },
+      },
+      orderBy: { createdAt: "desc" },
+    });
+
+    res.status(200).json({
+      success: true,
+      count: users.length,
+      data: users,
+    });
+  } catch (error) {
+    console.error("Error fetching users for admin:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error while fetching registered users",
+    });
+  }
+};
+
 // 5. جلب كافة الطلبات مع التفاصيل للأدمن (Get All Orders)
 export const getAdminOrders = async (req: Request, res: Response): Promise<void> => {
   try {

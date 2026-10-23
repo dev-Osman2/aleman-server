@@ -7,43 +7,30 @@ interface OrderItemInput {
   quantity: number;
 }
 
-export const createOrder = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
+// 1. [CREATE] إنشاء طلب جديد مع إنقاص المخزون فورياً
+export const createOrder = async (req: Request, res: Response): Promise<void> => {
   try {
-    const userId = req.user.id; // مأخوذ مباشرة من التوكن المحقق عبر requireAuth
+    const userId = req.user.id;
     const { address, notes, paymentMethod, transferNumber, items } = req.body;
 
-    // 1. التحقق من صحة المدخلات الإلزامية
-    if (
-      !address ||
-      !paymentMethod ||
-      !transferNumber ||
-      !items ||
-      !Array.isArray(items) ||
-      items.length === 0
-    ) {
+    if (!address || !paymentMethod || !transferNumber || !items || !Array.isArray(items) || items.length === 0) {
       res.status(400).json({
         success: false,
-        message:
-          "Required order data missing: address, paymentMethod, transferNumber, items",
+        message: "Required order fields missing: address, paymentMethod, transferNumber, items",
       });
       return;
     }
 
-    // التحقق من طريقة الدفع
     if (!Object.values(PaymentMethod).includes(paymentMethod)) {
       res.status(400).json({
         success: false,
-        message: `Invalid payment method. Allowed values: ${Object.values(PaymentMethod).join(", ")}`,
+        message: `Invalid payment method. Allowed: ${Object.values(PaymentMethod).join(", ")}`,
       });
       return;
     }
 
-    const deliveryFee = 20; // رسوم التوصيل الثابتة للمنازل
+    const deliveryFee = 20;
 
-    // 2. تشغيل المعاملة الآمنة (Prisma Transaction)
     const newOrder = await prisma.$transaction(async (tx) => {
       let subtotal = 0;
       const orderItemsToCreate = [];
@@ -53,7 +40,6 @@ export const createOrder = async (
           throw new Error("Invalid item format or quantity");
         }
 
-        // جلب الكتاب وفحص المخزون الحالي داخل سياق المعاملة
         const book = await tx.book.findUnique({
           where: { id: item.bookId },
         });
@@ -64,11 +50,11 @@ export const createOrder = async (
 
         if (book.quantity < item.quantity) {
           throw new Error(
-            `Insufficient stock for "${book.title}". Available: ${book.quantity}, Requested: ${item.quantity}`,
+            `Insufficient stock for "${book.title}". Available: ${book.quantity}, Requested: ${item.quantity}`
           );
         }
 
-        // إنقاص المخزون فورياً
+        // إنقاص المخزون
         await tx.book.update({
           where: { id: book.id },
           data: {
@@ -76,8 +62,7 @@ export const createOrder = async (
           },
         });
 
-        const itemTotal = book.price * item.quantity;
-        subtotal += itemTotal;
+        subtotal += book.price * item.quantity;
 
         orderItemsToCreate.push({
           bookId: book.id,
@@ -88,8 +73,7 @@ export const createOrder = async (
 
       const total = subtotal + deliveryFee;
 
-      // إنشاء الطلب وحفظ عناصره في جدول OrderItem
-      const createdOrder = await tx.order.create({
+      return await tx.order.create({
         data: {
           userId,
           address,
@@ -114,8 +98,6 @@ export const createOrder = async (
           },
         },
       });
-
-      return createdOrder;
     });
 
     res.status(201).json({
@@ -124,7 +106,7 @@ export const createOrder = async (
       data: newOrder,
     });
   } catch (error: any) {
-    console.error("Order transaction error:", error);
+    console.error("Order creation error:", error);
     res.status(400).json({
       success: false,
       message: error?.message || "Failed to process order",
@@ -132,11 +114,8 @@ export const createOrder = async (
   }
 };
 
-// جلب تاريخ طلبات المستخدم المسجل فقط
-export const getMyOrders = async (
-  req: Request,
-  res: Response,
-): Promise<void> => {
+// 2. [READ ALL] جلب قائمة كل طلبات المستخدم الحالي
+export const getMyOrders = async (req: Request, res: Response): Promise<void> => {
   try {
     const userId = req.user.id;
 
@@ -164,6 +143,177 @@ export const getMyOrders = async (
     res.status(500).json({
       success: false,
       message: "Internal server error while fetching user orders",
+    });
+  }
+};
+
+// 3. [READ ONE] جلب تفاصيل طلب واحد محدد للمستخدم
+export const getMyOrderById = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const orderId = Number(req.params.id);
+
+    if (isNaN(orderId)) {
+      res.status(400).json({ success: false, message: "Invalid order ID" });
+      return;
+    }
+
+    // البحث مع شرط أن يكون الطلب يخص هذا المستخدم تحديداً
+    const order = await prisma.order.findFirst({
+      where: {
+        id: orderId,
+        userId: userId, // صمام أمان لمنع رؤية طلبات الآخرين
+      },
+      include: {
+        items: {
+          include: {
+            book: {
+              select: { code: true, title: true, price: true, image: true },
+            },
+          },
+        },
+      },
+    });
+
+    if (!order) {
+      res.status(404).json({
+        success: false,
+        message: "Order not found or you do not have permission to view it",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      data: order,
+    });
+  } catch (error) {
+    console.error("Error fetching single order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error while fetching order details",
+    });
+  }
+};
+
+// 4. [UPDATE] تعديل بيانات التوصيل للطلب (مسموح فقط إذا كان قيد المراجعة PENDING)
+export const updateMyOrder = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const orderId = Number(req.params.id);
+    const { address, notes } = req.body;
+
+    if (isNaN(orderId)) {
+      res.status(400).json({ success: false, message: "Invalid order ID" });
+      return;
+    }
+
+    if (!address && notes === undefined) {
+      res.status(400).json({
+        success: false,
+        message: "Please provide address or notes to update",
+      });
+      return;
+    }
+
+    const existingOrder = await prisma.order.findFirst({
+      where: { id: orderId, userId },
+    });
+
+    if (!existingOrder) {
+      res.status(404).json({ success: false, message: "Order not found" });
+      return;
+    }
+
+    // منع التعديل إذا قام الأدمن بتأكيد الطلب
+    if (existingOrder.status !== OrderStatus.PENDING) {
+      res.status(400).json({
+        success: false,
+        message: "Cannot modify order details after it has been confirmed or cancelled",
+      });
+      return;
+    }
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: {
+        ...(address ? { address } : {}),
+        ...(notes !== undefined ? { notes } : {}),
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Order shipping details updated successfully",
+      data: updatedOrder,
+    });
+  } catch (error) {
+    console.error("Error updating order:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error while updating order",
+    });
+  }
+};
+
+// 5. [DELETE / CANCEL] إلغاء الطلب واسترجاع كميات المخزون للكتب
+export const cancelMyOrder = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const userId = req.user.id;
+    const orderId = Number(req.params.id);
+
+    if (isNaN(orderId)) {
+      res.status(400).json({ success: false, message: "Invalid order ID" });
+      return;
+    }
+
+    const order = await prisma.order.findFirst({
+      where: { id: orderId, userId },
+      include: { items: true },
+    });
+
+    if (!order) {
+      res.status(404).json({ success: false, message: "Order not found" });
+      return;
+    }
+
+    if (order.status !== OrderStatus.PENDING) {
+      res.status(400).json({
+        success: false,
+        message: "Cannot cancel an order that is already confirmed or cancelled",
+      });
+      return;
+    }
+
+    // تشغيل Transaction: تغيير الحالة إلى CANCELLED وإعادة تزويد المخزون
+    const cancelledOrder = await prisma.$transaction(async (tx) => {
+      // 1. إعادة كل كتاب تم شراؤه إلى مخزون الكتب
+      for (const item of order.items) {
+        await tx.book.update({
+          where: { id: item.bookId },
+          data: {
+            quantity: { increment: item.quantity }, // استرجاع الكمية
+          },
+        });
+      }
+
+      // 2. تحديث حالة الطلب
+      return await tx.order.update({
+        where: { id: orderId },
+        data: { status: OrderStatus.CANCELLED },
+      });
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Order cancelled successfully and book quantities restored to stock",
+      data: cancelledOrder,
+    });
+  } catch (error: any) {
+    console.error("Error cancelling order:", error);
+    res.status(500).json({
+      success: false,
+      message: error?.message || "Internal server error while cancelling order",
     });
   }
 };
