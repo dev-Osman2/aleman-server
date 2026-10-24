@@ -5,3 +5,57 @@ npx tsx watch src/server.ts
  npx prisma studio 
 
  npx prisma generate
+
+ aleman-backend/
+├── prisma/
+│   ├── schema.prisma             # نماذج قاعدة البيانات وعلاقاتها
+│   ├── migrations/               # سجل تعديلات الجداول
+│   └── seed.ts                   # تغذية قاعدة البيانات بالكتب والبيانات التجريبية
+│
+├── src/
+│   ├── @types/                   # توسيع أنواع Express (مثل إضافة user إلى Request)
+│   │   └── express.d.ts
+│   │
+│   ├── config/                   # إعدادات البيئة والاتصالات
+│   │   ├── env.ts                # فحص متغيرات .env
+│   │   └── auth.ts               # إعدادات Better Auth
+│   │
+│   ├── controllers/              # المتحكمات (منطق العمل واستدعاء Prisma)
+│   │   ├── auth.controller.ts    # تسجيل الدخول وإنشاء الحساب
+│   │   ├── book.controller.ts    # عمليات الكتب (عرض، إضافة، حذف)
+│   │   ├── order.controller.ts   # إنشاء وعرض طلبات المستخدم
+│   │   └── admin.controller.ts   # إدارة لوحة التحكم والطلبات العامة
+│   │
+│   ├── middlewares/              # البرمجيات الوسيطة
+│   │   ├── auth.middleware.ts    # فحص الجلسة (requireAuth) والرتبة (requireAdmin)
+│   │   ├── validate.middleware.ts # فحص مدخلات Zod تلقائياً قبل الـ Controller
+│   │   ├── rateLimiter.ts        # حدود الطلبات (Helmet & Rate-limit)
+│   │   └── error.middleware.ts   # معالج الأخطاء العام (Global Error Handler)
+│   │
+│   ├── routes/                   # توجيه الروابط وتوزيعها
+│   │   ├── auth.routes.ts        # مسارات التوثيق
+│   │   ├── book.routes.ts        # مسارات الكتب للزوار
+│   │   ├── order.routes.ts       # مسارات الطلبات للعملاء
+│   │   └── admin.routes.ts       # مسارات لوحة تحكم الإدارة
+│   │
+│   ├── services/                 # خدمات الطرف الثالث المستعارة
+│   │   └── telegram/             # إشعارات تيليجرام للطلبات الجديدة
+│   │       ├── telegramClient.ts     # تهيئة البوت والاتصال بـ API
+│   │       ├── telegramFormatters.ts # صياغة رسائل الطلبات وتنسيق الأرقام
+│   │       └── telegramService.ts    # دالة إرسال التنبيه عند إنشاء طلب
+│   │
+│   ├── validations/              # مخططات التحقق من البيانات عبر Zod
+│   │   ├── book.validation.ts    # شروط حقول الكتاب
+│   │   └── order.validation.ts   # شروط حقول إنشاء الطلب
+│   │
+│   ├── utils/                    # دوال مساعدة ومخصصة
+│   │   ├── apiError.ts           # كلاس موحد للأخطاء البرمجية
+│   │   └── formatters.ts         # تنسيق التواريخ والعملات
+│   │
+│   ├── prisma.ts                 # مثيل عميل Prisma الموحد
+│   ├── app.ts                    # تجميع الـ Middlewares والـ Routes
+│   └── server.ts                 # نقطة بدء تشغيل الخادم والمنفذ (PORT)
+│
+├── .env
+├── package.json
+└── tsconfig.json

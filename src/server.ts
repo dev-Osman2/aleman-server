@@ -5,6 +5,8 @@ import bookRoutes from "./routes/book.routes";
 import authRoutes from "./routes/auth.routes";
 import adminRoutes from "./routes/admin.routes";
 import orderRoutes from "./routes/order.routes"; // <-- استيراد المسار
+import helmet from "helmet";
+import { globalErrorHandler } from "./middleware/error.middleware";
 
 dotenv.config();
 
@@ -16,14 +18,24 @@ app.use(cors({
   credentials: true,
 
 }));
+
+app.use(helmet());
+
+app.use(
+  helmet({
+    crossOriginResourcePolicy: { policy: "cross-origin" },
+  })
+);
+
 app.use(express.json());
 
-// المسارات
 app.use("/api/products", bookRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/orders", orderRoutes); // <-- تفعيل مسار الطلبات
 
+
+app.use(globalErrorHandler);
 app.listen(PORT, () => {
   console.log(`Server is running on http://127.0.0.1:${PORT}`);
 });
