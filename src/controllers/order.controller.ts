@@ -1,22 +1,70 @@
 import { Request, Response } from "express";
 import { PaymentMethod, OrderStatus } from "@prisma/client";
 import { prisma } from "../prisma";
+import { notifyFeedback } from "../services/telegramService";
 
 interface OrderItemInput {
   bookId: string;
   quantity: number;
 }
 
+export const createFeedback = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  const message =
+    typeof req.body?.message === "string" ? req.body.message.trim() : "";
+
+  if (!message) {
+    res.status(400).json({
+      success: false,
+      message: "Feedback message is required",
+    });
+    return;
+  }
+
+  try {
+    const feedback = {
+      content: message,
+      createdAt: new Date(),
+    };
+
+    await notifyFeedback(feedback, req.user);
+
+    res.status(201).json({
+      success: true,
+      message: "Feedback submitted successfully",
+    });
+  } catch (error) {
+    console.error("Feedback submission error:", error);
+    res.status(500).json({
+      success: false,
+      message: "Failed to submit feedback",
+    });
+  }
+};
+
 // 1. [CREATE] إنشاء طلب جديد مع إنقاص المخزون فورياً
-export const createOrder = async (req: Request, res: Response): Promise<void> => {
+export const createOrder = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const userId = req.user.id;
     const { address, notes, paymentMethod, transferNumber, items } = req.body;
 
-    if (!address || !paymentMethod || !transferNumber || !items || !Array.isArray(items) || items.length === 0) {
+    if (
+      !address ||
+      !paymentMethod ||
+      !transferNumber ||
+      !items ||
+      !Array.isArray(items) ||
+      items.length === 0
+    ) {
       res.status(400).json({
         success: false,
-        message: "Required order fields missing: address, paymentMethod, transferNumber, items",
+        message:
+          "Required order fields missing: address, paymentMethod, transferNumber, items",
       });
       return;
     }
@@ -42,6 +90,12 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 
         const book = await tx.book.findUnique({
           where: { id: item.bookId },
+          select: {
+            id: true,
+            title: true,
+            price: true,
+            quantity: true,
+          },
         });
 
         if (!book) {
@@ -50,7 +104,7 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 
         if (book.quantity < item.quantity) {
           throw new Error(
-            `Insufficient stock for "${book.title}". Available: ${book.quantity}, Requested: ${item.quantity}`
+            `Insufficient stock for "${book.title}". Available: ${book.quantity}, Requested: ${item.quantity}`,
           );
         }
 
@@ -115,7 +169,10 @@ export const createOrder = async (req: Request, res: Response): Promise<void> =>
 };
 
 // 2. [READ ALL] جلب قائمة كل طلبات المستخدم الحالي
-export const getMyOrders = async (req: Request, res: Response): Promise<void> => {
+export const getMyOrders = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const userId = req.user.id;
 
@@ -148,7 +205,10 @@ export const getMyOrders = async (req: Request, res: Response): Promise<void> =>
 };
 
 // 3. [READ ONE] جلب تفاصيل طلب واحد محدد للمستخدم
-export const getMyOrderById = async (req: Request, res: Response): Promise<void> => {
+export const getMyOrderById = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const userId = req.user.id;
     const orderId = Number(req.params.id);
@@ -197,7 +257,10 @@ export const getMyOrderById = async (req: Request, res: Response): Promise<void>
 };
 
 // 4. [UPDATE] تعديل بيانات التوصيل للطلب (مسموح فقط إذا كان قيد المراجعة PENDING)
-export const updateMyOrder = async (req: Request, res: Response): Promise<void> => {
+export const updateMyOrder = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const userId = req.user.id;
     const orderId = Number(req.params.id);
@@ -229,7 +292,8 @@ export const updateMyOrder = async (req: Request, res: Response): Promise<void> 
     if (existingOrder.status !== OrderStatus.PENDING) {
       res.status(400).json({
         success: false,
-        message: "Cannot modify order details after it has been confirmed or cancelled",
+        message:
+          "Cannot modify order details after it has been confirmed or cancelled",
       });
       return;
     }
@@ -252,68 +316,6 @@ export const updateMyOrder = async (req: Request, res: Response): Promise<void> 
     res.status(500).json({
       success: false,
       message: "Internal server error while updating order",
-    });
-  }
-};
-
-// 5. [DELETE / CANCEL] إلغاء الطلب واسترجاع كميات المخزون للكتب
-export const cancelMyOrder = async (req: Request, res: Response): Promise<void> => {
-  try {
-    const userId = req.user.id;
-    const orderId = Number(req.params.id);
-
-    if (isNaN(orderId)) {
-      res.status(400).json({ success: false, message: "Invalid order ID" });
-      return;
-    }
-
-    const order = await prisma.order.findFirst({
-      where: { id: orderId, userId },
-      include: { items: true },
-    });
-
-    if (!order) {
-      res.status(404).json({ success: false, message: "Order not found" });
-      return;
-    }
-
-    if (order.status !== OrderStatus.PENDING) {
-      res.status(400).json({
-        success: false,
-        message: "Cannot cancel an order that is already confirmed or cancelled",
-      });
-      return;
-    }
-
-    // تشغيل Transaction: تغيير الحالة إلى CANCELLED وإعادة تزويد المخزون
-    const cancelledOrder = await prisma.$transaction(async (tx) => {
-      // 1. إعادة كل كتاب تم شراؤه إلى مخزون الكتب
-      for (const item of order.items) {
-        await tx.book.update({
-          where: { id: item.bookId },
-          data: {
-            quantity: { increment: item.quantity }, // استرجاع الكمية
-          },
-        });
-      }
-
-      // 2. تحديث حالة الطلب
-      return await tx.order.update({
-        where: { id: orderId },
-        data: { status: OrderStatus.CANCELLED },
-      });
-    });
-
-    res.status(200).json({
-      success: true,
-      message: "Order cancelled successfully and book quantities restored to stock",
-      data: cancelledOrder,
-    });
-  } catch (error: any) {
-    console.error("Error cancelling order:", error);
-    res.status(500).json({
-      success: false,
-      message: error?.message || "Internal server error while cancelling order",
     });
   }
 };

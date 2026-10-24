@@ -84,12 +84,12 @@ model Verification {
 // 5. جدول الكتب (كما هو)
 model Book {
   id              String      @id @default(uuid())
-  code            Int         @unique
+  code            String         @unique
   title           String
   description     String
   fullDescription String?
-  price           Float
-  oldPrice        Float?
+  price           Int
+  oldPrice        Int?
   quantity        Int         @default(0)
   category        String
   image           String
@@ -108,9 +108,9 @@ model Order {
   notes          String?
   paymentMethod  PaymentMethod
   transferNumber String
-  subtotal       Float
-  deliveryFee    Float
-  total          Float
+  subtotal       Int
+  deliveryFee    Int
+  total          Int
   status         OrderStatus   @default(PENDING)
   createdAt      DateTime      @default(now())
 
@@ -124,7 +124,7 @@ model Order {
 model OrderItem {
   id         String @id @default(uuid())
   quantity   Int
-  priceAtBuy Float
+  priceAtBuy Int
 
   orderId    Int
   order      Order  @relation(fields: [orderId], references: [id], onDelete: Cascade)

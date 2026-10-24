@@ -41,23 +41,45 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-// 2. تسجيل الدخول (Login)
+// 2. تسجيل الدخول عبر البريد الإلكتروني أو رقم الهاتف (Login)
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    // نقبل الحقل سواء أرسله الفرونت إند باسم identifier أو email أو phone
+    const { identifier, email, phone, password } = req.body;
+    const loginInput = (identifier || email || phone || "").trim();
 
-    if (!email || !password) {
+    if (!loginInput || !password) {
       res.status(400).json({
         success: false,
-        message: "Email and password are required",
+        message: "يرجى إدخال البريد الإلكتروني (أو رقم الهاتف) وكلمة المرور",
       });
       return;
     }
 
-    // التحقق من صحة البيانات وإنشاء توكن الجلسة (Session Token)
+    let targetEmail = loginInput;
+
+    // إذا كان المدخل لا يحتوي على '@' فهذا يعني أن المستخدم أدخل رقم هاتفه
+    if (!loginInput.includes("@")) {
+      const userByPhone = await prisma.user.findUnique({
+        where: { phone: loginInput },
+        select: { email: true },
+      });
+
+      if (!userByPhone) {
+        res.status(401).json({
+          success: false,
+          message: "رقم الهاتف أو كلمة المرور غير صحيحة",
+        });
+        return;
+      }
+
+      targetEmail = userByPhone.email;
+    }
+
+    // التحقق من صحة كلمة المرور وإنشاء توكن الجلسة عبر Better Auth
     const response = await auth.api.signInEmail({
       body: {
-        email,
+        email: targetEmail,
         password,
       },
       asResponse: false,
@@ -72,7 +94,7 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
     console.error("Error logging in:", error);
     res.status(401).json({
       success: false,
-      message: error?.message || "Invalid email or password",
+      message: "بيانات الدخول غير صحيحة، تأكد من الإيميل/الهاتف وكلمة المرور",
     });
   }
 };

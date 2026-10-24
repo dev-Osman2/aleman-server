@@ -7,6 +7,6 @@ const router = Router();
 router.get("/", getBooks);
 
 // GET /api/products/:id
-router.get("/:id", getBookById);
+router.get("/:code", getBookById);
 
 export default router;

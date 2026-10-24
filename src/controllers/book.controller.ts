@@ -57,10 +57,10 @@ export const getBooks = async (req: Request, res: Response): Promise<void> => {
 // جلب تفاصيل كتاب محدد بواسطة المعرف للصفحة الديناميكية /products/[id]
 export const getBookById = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { id } = req.params;
+    const { code } = req.params;
 
     const book = await prisma.book.findUnique({
-      where: { id },
+      where: { code },
     });
 
     if (!book) {
