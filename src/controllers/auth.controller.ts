@@ -221,34 +221,43 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
 
     const userId = session.user.id;
 
-    // فحص ما إذا كان للمستخدم طلبات سابقة في المتجر
-    const userOrdersCount = await prisma.order.count({
-      where: { userId },
-    });
-
-    if (userOrdersCount > 0) {
-      res.status(400).json({
-        success: false,
-        message: "Cannot delete account with existing purchase orders for auditing reasons",
+    // تنفيذ الحذف الكامل في معاملة واحدة تشمل الطلبات والجلسات وحساب المصادقة
+    await prisma.$transaction(async (tx) => {
+      // 1. حذف عناصر الطلبات المرتبطة بطلبات المستخدم
+      await tx.orderItem.deleteMany({
+        where: { order: { userId } },
       });
-      return;
-    }
 
-    // تنفيذ الحذف عبر Prisma
-    // بسبب وجود onDelete: Cascade، سيقوم PostgreSQL تلقائياً بحذف الجلسات (Sessions) وحسابات الدخول (Accounts) المرتبطة
-    await prisma.user.delete({
-      where: { id: userId },
+      // 2. حذف طلبات المستخدم
+      await tx.order.deleteMany({
+        where: { userId },
+      });
+
+      // 3. حذف جلسات المستخدم في Better Auth
+      await tx.session.deleteMany({
+        where: { userId },
+      });
+
+      // 4. حذف حساب المصادقة وكلمة المرور
+      await tx.account.deleteMany({
+        where: { userId },
+      });
+
+      // 5. حذف سجل المستخدم نهائياً
+      await tx.user.delete({
+        where: { id: userId },
+      });
     });
 
     res.status(200).json({
       success: true,
-      message: "Account and associated sessions deleted successfully",
+      message: "تم حذف الحساب وكافة البيانات المرتبطة به بنجاح",
     });
   } catch (error) {
     console.error("Error deleting account:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error while deleting account",
+      message: "حدث خطأ أثناء محاولة حذف الحساب",
     });
   }
 };
