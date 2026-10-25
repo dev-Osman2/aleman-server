@@ -21,6 +21,7 @@ app.use(express.json());
 
 // المسارات
 app.use("/api/products", bookRoutes);
+app.use("/api/books", bookRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/orders", orderRoutes); // <-- تفعيل مسار الطلبات

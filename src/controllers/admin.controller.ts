@@ -1,6 +1,7 @@
 import { Request, Response } from "express";
 import { OrderStatus } from "@prisma/client";
 import { prisma } from "../prisma";
+import { notifyConfirmedOrder } from "../services/telegramService";
 
 // 1. جلب إحصائيات لوحة التحكم
 export const getAdminStats = async (req: Request, res: Response): Promise<void> => {
@@ -62,7 +63,7 @@ export const createBook = async (req: Request, res: Response): Promise<void> => 
 
     // التحقق من عدم تكرار كود الكتاب
     const existingBook = await prisma.book.findUnique({
-      where: { code: Number(code) },
+      where: { code: String(code) },
     });
 
     if (existingBook) {
@@ -75,12 +76,12 @@ export const createBook = async (req: Request, res: Response): Promise<void> => 
 
     const newBook = await prisma.book.create({
       data: {
-        code: Number(code),
+        code: String(code),
         title,
         description,
         fullDescription,
-        price: parseFloat(price),
-        oldPrice: oldPrice ? parseFloat(oldPrice) : null,
+        price: Math.round(Number(price)),
+        oldPrice: oldPrice ? Math.round(Number(oldPrice)) : null,
         quantity: quantity !== undefined ? Number(quantity) : 0,
         category,
         image,
@@ -119,11 +120,11 @@ export const updateBook = async (req: Request, res: Response): Promise<void> => 
 
     // تجهيز البيانات المراد تعديلها مع معالجة الأرقام
     const dataToUpdate: any = { ...updateData };
-    if (updateData.code !== undefined) dataToUpdate.code = Number(updateData.code);
-    if (updateData.price !== undefined) dataToUpdate.price = parseFloat(updateData.price);
-    if (updateData.oldPrice !== undefined) dataToUpdate.oldPrice = parseFloat(updateData.oldPrice);
+    if (updateData.code !== undefined) dataToUpdate.code = String(updateData.code);
+    if (updateData.price !== undefined) dataToUpdate.price = Math.round(Number(updateData.price));
+    if (updateData.oldPrice !== undefined) dataToUpdate.oldPrice = updateData.oldPrice ? Math.round(Number(updateData.oldPrice)) : null;
     if (updateData.quantity !== undefined) dataToUpdate.quantity = Number(updateData.quantity);
-    if (updateData.pagesCount !== undefined) dataToUpdate.pagesCount = Number(updateData.pagesCount);
+    if (updateData.pagesCount !== undefined) dataToUpdate.pagesCount = updateData.pagesCount ? Number(updateData.pagesCount) : null;
 
     const updatedBook = await prisma.book.update({
       where: { id },
@@ -220,7 +221,7 @@ export const getAdminOrders = async (req: Request, res: Response): Promise<void>
       where: status && typeof status === "string" ? { status: status as OrderStatus } : {},
       include: {
         user: {
-          select: { name: true, phone: true, email: true },
+          select: { name: true, phone: true, email: true, role: true },
         },
         items: {
           include: {
@@ -259,13 +260,77 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: Number(id) },
-      data: { status: status as OrderStatus },
+    const orderId = Number(id);
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: orderId },
       include: {
-        user: { select: { name: true, phone: true } },
+        items: true,
+        user: { select: { name: true, phone: true, email: true, role: true } },
       },
     });
+
+    if (!existingOrder) {
+      res.status(404).json({ success: false, message: "Order not found" });
+      return;
+    }
+
+    const previousStatus = existingOrder.status;
+    const targetStatus = status as OrderStatus;
+
+    // معاملة مالية/مخزنية ذرية (Prisma Transaction)
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      // 1. عند إلغاء الطلب (CANCELLED): إرجاع الكمية إلى مخزون الكتب
+      if (targetStatus === OrderStatus.CANCELLED && previousStatus !== OrderStatus.CANCELLED) {
+        for (const item of existingOrder.items) {
+          if (item.bookId) {
+            await tx.book.update({
+              where: { id: item.bookId },
+              data: {
+                quantity: { increment: item.quantity },
+              },
+            });
+          }
+        }
+      }
+
+      // 2. إذا كان الطلب ملغياً وتمت إعادته إلى قيد الانتظار أو مؤكد: إنقاص المخزون مرة أخرى
+      if (previousStatus === OrderStatus.CANCELLED && (targetStatus === OrderStatus.PENDING || targetStatus === OrderStatus.CONFIRMED)) {
+        for (const item of existingOrder.items) {
+          if (item.bookId) {
+            await tx.book.update({
+              where: { id: item.bookId },
+              data: {
+                quantity: { decrement: item.quantity },
+              },
+            });
+          }
+        }
+      }
+
+      return await tx.order.update({
+        where: { id: orderId },
+        data: { status: targetStatus },
+        include: {
+          user: { select: { name: true, phone: true, email: true, role: true } },
+          items: {
+            include: {
+              book: {
+                select: { code: true, title: true, image: true },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    // 3. عند ضغط الأدمن "تأكيد الطلب" (CONFIRMED): إرسال الطلب لجروب التلجرام للتجهيز
+    if (targetStatus === OrderStatus.CONFIRMED) {
+      try {
+        await notifyConfirmedOrder(updatedOrder);
+      } catch (tgError) {
+        console.error("Failed to dispatch order to Telegram:", tgError);
+      }
+    }
 
     res.status(200).json({
       success: true,

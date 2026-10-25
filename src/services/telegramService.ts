@@ -1,18 +1,20 @@
 import { sendTelegramMessage } from "./telegram/telegramClient";
 import {
-  formatNewOrderMessage,
+  formatConfirmedOrderForPrep,
   formatOrderStatusMessage,
   formatFeedbackMessage,
 } from "./telegram/telegramFormatters";
 
-export const notifyNewOrder = async (order: any): Promise<boolean> => {
+export const notifyConfirmedOrder = async (order: any): Promise<boolean> => {
   try {
-    const text = formatNewOrderMessage(order);
+    const text = formatConfirmedOrderForPrep(order);
     return await sendTelegramMessage(text);
   } catch {
     return false;
   }
 };
+
+export const notifyNewOrder = notifyConfirmedOrder;
 
 export const notifyOrderStatus = async (
   order: any,
@@ -40,6 +42,7 @@ export const notifyFeedback = async (
 };
 
 export default {
+  notifyConfirmedOrder,
   notifyNewOrder,
   notifyOrderStatus,
   notifyFeedback,

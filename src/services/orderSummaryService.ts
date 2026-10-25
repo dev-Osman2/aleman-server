@@ -1,4 +1,4 @@
-import prisma from "../config/db";
+import { prisma } from "../prisma";
 
 export const getOrderSummary = async () => {
   const [
