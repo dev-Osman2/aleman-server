@@ -106,6 +106,7 @@ model Order {
   id             Int           @id @default(autoincrement())
   address        String
   notes          String?
+  adminNote      String?
   paymentMethod  PaymentMethod
   transferNumber String
   subtotal       Int

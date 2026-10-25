@@ -342,3 +342,58 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
     res.status(500).json({ success: false, message: "Internal server error while updating status" });
   }
 };
+
+// 7. تحديث ملاحظة الأدمن على الطلب (Update Admin Note)
+export const updateOrderAdminNote = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { adminNote } = req.body;
+
+    const orderId = Number(id);
+    if (isNaN(orderId)) {
+      res.status(400).json({ success: false, message: "Invalid order ID" });
+      return;
+    }
+
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+    });
+
+    if (!existingOrder) {
+      res.status(404).json({ success: false, message: "Order not found" });
+      return;
+    }
+
+    const trimmedNote =
+      typeof adminNote === "string" && adminNote.trim() !== ""
+        ? adminNote.trim()
+        : null;
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: { adminNote: trimmedNote },
+      include: {
+        user: { select: { name: true, phone: true, email: true, role: true } },
+        items: {
+          include: {
+            book: {
+              select: { code: true, title: true, image: true },
+            },
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Order admin note updated successfully",
+      data: updatedOrder,
+    });
+  } catch (error) {
+    console.error("Error updating order admin note:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error while updating admin note",
+    });
+  }
+};

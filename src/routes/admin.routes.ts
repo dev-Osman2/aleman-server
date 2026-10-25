@@ -8,6 +8,7 @@ import {
   getAdminOrders,
   updateOrderStatus,
   getAdminUsers, // <-- استيراد الدالة الجديدة
+  updateOrderAdminNote,
 } from "../controllers/admin.controller";
 
 const router = Router();
@@ -28,5 +29,7 @@ router.delete("/books/:id", deleteBook);
 // إدارة الطلبات
 router.get("/orders", getAdminOrders);
 router.patch("/orders/:id/status", updateOrderStatus);
+router.patch("/orders/:id/note", updateOrderAdminNote);
+router.patch("/orders/:id/admin-note", updateOrderAdminNote);
 
 export default router;

@@ -51,7 +51,7 @@ export const createOrder = async (
 ): Promise<void> => {
   try {
     const userId = req.user.id;
-    const { address, notes, paymentMethod, transferNumber, items } = req.body;
+    const { address, notes, paymentMethod, transferNumber, items, name, phone } = req.body;
 
     if (
       !address ||
@@ -127,6 +127,30 @@ export const createOrder = async (
 
       const total = subtotal + deliveryFee;
 
+      // تحديث اسم ورقم هاتف المستخدم إذا قام بتعديلهما
+      if (name || phone) {
+        const updateData: { name?: string; phone?: string } = {};
+        if (typeof name === "string" && name.trim()) {
+          updateData.name = name.trim();
+        }
+        if (typeof phone === "string" && phone.trim()) {
+          const trimmedPhone = phone.trim();
+          const existing = await tx.user.findUnique({
+            where: { phone: trimmedPhone },
+            select: { id: true },
+          });
+          if (!existing || existing.id === userId) {
+            updateData.phone = trimmedPhone;
+          }
+        }
+        if (Object.keys(updateData).length > 0) {
+          await tx.user.update({
+            where: { id: userId },
+            data: updateData,
+          });
+        }
+      }
+
       return await tx.order.create({
         data: {
           userId,
@@ -143,6 +167,9 @@ export const createOrder = async (
           },
         },
         include: {
+          user: {
+            select: { id: true, name: true, phone: true, email: true },
+          },
           items: {
             include: {
               book: {
