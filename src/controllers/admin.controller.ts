@@ -3,6 +3,7 @@ import { OrderStatus } from "@prisma/client";
 import { prisma } from "../prisma";
 import {
   notifyConfirmedOrder,
+  deleteTelegramMessage,
   clearAllTelegramMessages,
 } from "../services/telegramService";
 
@@ -281,7 +282,7 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
     const targetStatus = status as OrderStatus;
 
     
-    const updatedOrder = await prisma.$transaction(async (tx) => {
+    let updatedOrder = await prisma.$transaction(async (tx) => {
       
       if (targetStatus === OrderStatus.CANCELLED && previousStatus !== OrderStatus.CANCELLED) {
         for (const item of existingOrder.items) {
@@ -312,7 +313,10 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
 
       return await tx.order.update({
         where: { id: orderId },
-        data: { status: targetStatus },
+        data: {
+          status: targetStatus,
+          ...(targetStatus === OrderStatus.CANCELLED ? { telegramMessageId: null } : {}),
+        },
         include: {
           user: { select: { name: true, phone: true, email: true, role: true } },
           items: {
@@ -326,12 +330,35 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
       });
     });
 
-    
     if (targetStatus === OrderStatus.CONFIRMED) {
       try {
-        await notifyConfirmedOrder(updatedOrder);
+        const messageId = await notifyConfirmedOrder(updatedOrder);
+        if (messageId) {
+          updatedOrder = await prisma.order.update({
+            where: { id: orderId },
+            data: { telegramMessageId: messageId },
+            include: {
+              user: { select: { name: true, phone: true, email: true, role: true } },
+              items: {
+                include: {
+                  book: {
+                    select: { code: true, title: true, image: true },
+                  },
+                },
+              },
+            },
+          });
+        }
       } catch (tgError) {
         console.error("Failed to dispatch order to Telegram:", tgError);
+      }
+    } else if (targetStatus === OrderStatus.CANCELLED) {
+      if (existingOrder.telegramMessageId) {
+        try {
+          await deleteTelegramMessage(existingOrder.telegramMessageId);
+        } catch (tgError) {
+          console.error("Failed to delete order message from Telegram:", tgError);
+        }
       }
     }
 
@@ -406,13 +433,27 @@ export const clearAllOrders = async (
   res: Response,
 ): Promise<void> => {
   try {
+    const ordersWithTelegram = await prisma.order.findMany({
+      where: {
+        telegramMessageId: {
+          not: null,
+        },
+      },
+      select: {
+        telegramMessageId: true,
+      },
+    });
+
+    const messageIds = ordersWithTelegram
+      .map((order) => order.telegramMessageId)
+      .filter((id): id is number => id !== null && typeof id === "number");
+
+    const telegramMessagesDeleted = await clearAllTelegramMessages(messageIds);
+
     const [deletedItems, deletedOrders] = await prisma.$transaction([
       prisma.orderItem.deleteMany({}),
       prisma.order.deleteMany({}),
     ]);
-
-    
-    const telegramMessagesDeleted = await clearAllTelegramMessages();
 
     res.status(200).json({
       success: true,

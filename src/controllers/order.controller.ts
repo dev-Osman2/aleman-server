@@ -168,6 +168,7 @@ export const createOrder = async (
           deliveryFee,
           total,
           status: OrderStatus.PENDING,
+          telegramMessageId: null,
           items: {
             create: orderItemsToCreate,
           },

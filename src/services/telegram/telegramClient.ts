@@ -1,44 +1,12 @@
-import fs from "fs";
-import path from "path";
-
-const MESSAGES_FILE = path.join(__dirname, "../../../data/telegram_messages.json");
-
-function getStoredMessageIds(): number[] {
-  try {
-    if (!fs.existsSync(MESSAGES_FILE)) {
-      return [];
-    }
-    const raw = fs.readFileSync(MESSAGES_FILE, "utf-8");
-    const parsed = JSON.parse(raw);
-    return Array.isArray(parsed) ? parsed : [];
-  } catch {
-    return [];
-  }
-}
-
-function storeMessageId(id: number): void {
-  try {
-    const dir = path.dirname(MESSAGES_FILE);
-    if (!fs.existsSync(dir)) {
-      fs.mkdirSync(dir, { recursive: true });
-    }
-    const ids = getStoredMessageIds();
-    if (!ids.includes(id)) {
-      ids.push(id);
-      fs.writeFileSync(MESSAGES_FILE, JSON.stringify(ids, null, 2), "utf-8");
-    }
-  } catch (err) {
-    console.error("Failed to store Telegram message ID:", err);
-  }
-}
-
-export const sendTelegramMessage = async (text: string): Promise<boolean> => {
+export const sendTelegramMessage = async (
+  text: string,
+): Promise<number | null> => {
   try {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
 
     if (!token || !chatId) {
-      return false;
+      return null;
     }
 
     const url = `https://api.telegram.org/bot${token}/sendMessage`;
@@ -53,16 +21,14 @@ export const sendTelegramMessage = async (text: string): Promise<boolean> => {
     });
 
     if (response.ok) {
-      const data = await response.json();
-      if (data?.result?.message_id) {
-        storeMessageId(data.result.message_id);
-      }
-      return true;
+      const data: any = await response.json();
+      return data?.result?.message_id ?? null;
     }
 
-    return false;
-  } catch {
-    return false;
+    return null;
+  } catch (error) {
+    console.error("Error sending Telegram message:", error);
+    return null;
   }
 };
 
@@ -80,45 +46,31 @@ export const deleteTelegramMessage = async (
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ chat_id: chatId, message_id: messageId }),
     });
-    const data = await res.json();
+    const data: any = await res.json();
     return Boolean(data?.ok);
-  } catch {
+  } catch (error) {
+    console.error(`Error deleting Telegram message ${messageId}:`, error);
     return false;
   }
 };
 
-export const clearAllTelegramMessages = async (): Promise<number> => {
+export const clearAllTelegramMessages = async (
+  messageIds: number[],
+): Promise<number> => {
   try {
     const token = process.env.TELEGRAM_BOT_TOKEN;
     const chatId = process.env.TELEGRAM_CHAT_ID;
-    if (!token || !chatId) return 0;
+    if (!token || !chatId || !Array.isArray(messageIds) || messageIds.length === 0) {
+      return 0;
+    }
 
-    const storedIds = getStoredMessageIds();
     let deletedCount = 0;
 
-    
-    for (const msgId of storedIds) {
-      const ok = await deleteTelegramMessage(msgId);
-      if (ok) deletedCount++;
-    }
-
-    
-    const maxId = storedIds.length > 0 ? Math.max(...storedIds) : 100;
-    const minSweep = Math.max(1, maxId - 150);
-    for (let id = maxId; id >= minSweep; id--) {
-      if (!storedIds.includes(id)) {
-        const ok = await deleteTelegramMessage(id);
+    for (const msgId of messageIds) {
+      if (typeof msgId === "number" && !isNaN(msgId)) {
+        const ok = await deleteTelegramMessage(msgId);
         if (ok) deletedCount++;
       }
-    }
-
-    
-    try {
-      if (fs.existsSync(MESSAGES_FILE)) {
-        fs.writeFileSync(MESSAGES_FILE, JSON.stringify([], null, 2), "utf-8");
-      }
-    } catch {
-      
     }
 
     return deletedCount;
@@ -127,3 +79,4 @@ export const clearAllTelegramMessages = async (): Promise<number> => {
     return 0;
   }
 };
+

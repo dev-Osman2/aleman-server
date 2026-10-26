@@ -13,7 +13,7 @@ export const globalErrorHandler = (
   let message = err.message || "حدث خطأ غير متوقع في الخادم";
   let errors = null;
 
-  // 1. أخطاء التحقق من Zod
+  
   if (err instanceof ZodError) {
     statusCode = 400;
     message = "بيانات غير صالحة";
@@ -23,22 +23,22 @@ export const globalErrorHandler = (
     }));
   }
 
-  // 2. أخطاء Prisma لقواعد البيانات
+  
   else if (err instanceof Prisma.PrismaClientKnownRequestError) {
-    // P2002: تكرار قيمة حقل فريد (Unique Constraint) مثل الكود أو الإيميل
+    
     if (err.code === "P2002") {
       statusCode = 409;
       const target = (err.meta?.target as string[])?.join(", ") || "حقل";
       message = `هذه القيمة مستخدمة بالفعل (${target})`;
     }
-    // P2025: العنصر المطلوب تعديله أو حذفه غير موجود
+    
     else if (err.code === "P2025") {
       statusCode = 404;
       message = "العنصر المطلوب غير موجود في قاعدة البيانات";
     }
   }
 
-  // طباعة الخطأ الكامل في السيرفر فقط لبيئة التطوير
+  
   if (process.env.NODE_ENV !== "production") {
     console.error("💥 ERROR CAUGHT BY GLOBAL HANDLER:", err);
   }
