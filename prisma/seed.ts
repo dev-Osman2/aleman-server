@@ -1,367 +1,147 @@
-import { PrismaClient, Role, PaymentMethod, OrderStatus } from "@prisma/client";
+import "dotenv/config";
+import { randomBytes } from "node:crypto";
+import { PrismaClient, Role } from "@prisma/client";
+import { hashPassword } from "better-auth/crypto";
 
 const prisma = new PrismaClient();
 
+/**
+ * Demo-only seed for the schema shared in the conversation.
+ * - 1 admin + 29 demo customers
+ * - A credential Account with a Better Auth-compatible password hash for each user
+ * - One database Session row per seeded user
+ *
+ * IMPORTANT: the created Session rows are database records; this script does not
+ * sign a browser cookie or log anyone into a browser. Users can sign in normally
+ * with the credentials printed below, and Better Auth will issue its own cookie.
+ */
+const DEMO_SESSION_USER_AGENT = "aleman-backend-demo-seed";
+const DEMO_CUSTOMER_PASSWORD = "Demo@12345";
+const ADMIN_EMAIL = "contac@aswany.me";
+const ADMIN_PHONE = "01080859921";
+const ADMIN_PASSWORD = "Aswany@12345";
+const SESSION_DAYS = 30;
+
+const customers = Array.from({ length: 29 }, (_, index) => {
+  const n = String(index + 1).padStart(2, "0");
+  return {
+    name: `عميل تجريبي ${n}`,
+    email: `demo${n}@example.com`,
+    
+    phone: `000000000${String(index + 1).padStart(2, "0")}`,
+    password: DEMO_CUSTOMER_PASSWORD,
+    role: Role.CUSTOMER,
+  };
+});
+
+const seedUsers = [
+  {
+    name: "Aswany",
+    email: ADMIN_EMAIL,
+    phone: ADMIN_PHONE,
+    password: ADMIN_PASSWORD,
+    role: Role.ADMIN,
+  },
+  ...customers,
+];
+
+async function upsertSeedUser(input: (typeof seedUsers)[number]) {
+  const user = await prisma.user.upsert({
+    where: { email: input.email },
+    create: {
+      name: input.name,
+      email: input.email,
+      phone: input.phone,
+      emailVerified: true,
+      role: input.role,
+    },
+    update: {
+      name: input.name,
+      phone: input.phone,
+      emailVerified: true,
+      role: input.role,
+    },
+  });
+
+  
+  
+  const passwordHash = await hashPassword(input.password);
+  const credentialAccount = await prisma.account.findFirst({
+    where: {
+      userId: user.id,
+      providerId: "credential",
+      accountId: user.id,
+    },
+    select: { id: true },
+  });
+
+  if (credentialAccount) {
+    await prisma.account.update({
+      where: { id: credentialAccount.id },
+      data: { password: passwordHash },
+    });
+  } else {
+    await prisma.account.create({
+      data: {
+        accountId: user.id,
+        providerId: "credential",
+        userId: user.id,
+        password: passwordHash,
+      },
+    });
+  }
+
+  
+  await prisma.session.deleteMany({
+    where: { userId: user.id, userAgent: DEMO_SESSION_USER_AGENT },
+  });
+
+  const token = randomBytes(32).toString("base64url");
+  const expiresAt = new Date(Date.now() + SESSION_DAYS * 24 * 60 * 60 * 1000);
+
+  await prisma.session.create({
+    data: {
+      userId: user.id,
+      token,
+      expiresAt,
+      ipAddress: "127.0.0.1",
+      userAgent: DEMO_SESSION_USER_AGENT,
+    },
+  });
+
+  return user;
+}
+
 async function main() {
-  console.log("Cleaning old database records...");
-  await prisma.orderItem.deleteMany();
-  await prisma.order.deleteMany();
-  await prisma.book.deleteMany();
-  await prisma.user.deleteMany();
+  if (process.env.NODE_ENV === "production" && process.env.ALLOW_DEMO_SEED_IN_PRODUCTION !== "true") {
+    throw new Error(
+      "Refusing to seed demo accounts in production. Run against a development database, or explicitly set ALLOW_DEMO_SEED_IN_PRODUCTION=true after checking DATABASE_URL.",
+    );
+  }
 
-  console.log("Seeding users (Admin & Customer)...");
-  const adminUser = await prisma.user.create({
-    data: {
-      name: "Aleman Store Admin",
-      phone: "01000000001",
-      email: "admin@aleman.store",
-      password: "admin_password_123",
-      role: Role.ADMIN,
-    },
-  });
+  if (!process.env.DATABASE_URL) {
+    throw new Error("DATABASE_URL is missing. Add it to your .env file first.");
+  }
 
-  const customerUser = await prisma.user.create({
-    data: {
-      name: "Ahmed Mohamed Ali",
-      phone: "01012345678",
-      email: "ahmed@example.com",
-      password: "user_password_123",
-      role: Role.CUSTOMER,
-    },
-  });
+  console.log("Creating/updating 1 admin and 29 demo customers...");
+  for (const input of seedUsers) {
+    const user = await upsertSeedUser(input);
+    console.log(`✓ ${user.role.padEnd(8)} ${user.email}`);
+  }
 
-  console.log("Seeding books inventory...");
-  const books = await Promise.all([
-    prisma.book.create({
-      data: {
-        code: 101,
-        title: "The Sealed Nectar",
-        description: "A complete authoritative book on the life of Prophet Muhammad.",
-        fullDescription: "A detailed biography covering historical events with verified sources and comprehensive indexing.",
-        price: 180,
-        oldPrice: 210,
-        quantity: 45,
-        category: "Islamic Books",
-        image: "/menuPicture/1.webp",
-        author: "Safiur Rahman Mubarakpuri",
-        publisher: "Darussalam",
-        pagesCount: 512,
-      },
-    }),
-    prisma.book.create({
-      data: {
-        code: 102,
-        title: "Atomic Habits",
-        description: "An easy and proven way to build good habits and break bad ones.",
-        fullDescription: "James Clear presents a practical framework for improving every day through tiny changes that deliver remarkable results.",
-        price: 150,
-        oldPrice: 175,
-        quantity: 30,
-        category: "Self Development",
-        image: "/menuPicture/2.webp",
-        author: "James Clear",
-        publisher: "Penguin Random House",
-        pagesCount: 320,
-      },
-    }),
-    prisma.book.create({
-      data: {
-        code: 103,
-        title: "The Granada Trilogy",
-        description: "A historical novel following an Andalusian family across generations.",
-        fullDescription: "An epic literary work combining Granada, Maryama, and The Departure in a single complete volume.",
-        price: 220,
-        quantity: 20,
-        category: "Novels",
-        image: "/menuPicture/3.webp",
-        author: "Radwa Ashour",
-        publisher: "Dar Al-Shorouk",
-        pagesCount: 490,
-      },
-    }),
-    prisma.book.create({
-      data: {
-        code: 104,
-        title: "Because You Are Allah",
-        description: "Deep spiritual reflections on the meanings of Allah's Beautiful Names.",
-        fullDescription: "A guide that brings the reader closer to understanding divine attributes and how to live by them daily.",
-        price: 95,
-        oldPrice: 120,
-        quantity: 60,
-        category: "Islamic Books",
-        image: "/menuPicture/4.webp",
-        author: "Ali Bin Jaber Al-Fifi",
-        publisher: "Dar Al-Hadarah",
-        pagesCount: 192,
-      },
-    }),
-    prisma.book.create({
-      data: {
-        code: 105,
-        title: "The Subtle Art of Not Giving a F*ck",
-        description: "A counterintuitive approach to living a good life and focusing on what matters.",
-        fullDescription: "Discusses how to focus limited human energy on things of true value instead of constant anxiety.",
-        price: 140,
-        quantity: 25,
-        category: "Self Development",
-        image: "/menuPicture/5.webp",
-        author: "Mark Manson",
-        publisher: "HarperOne",
-        pagesCount: 272,
-      },
-    }),
-    prisma.book.create({
-      data: {
-        code: 106,
-        title: "Land of Zikola",
-        description: "A fantasy thriller about a city that trades in intelligence units instead of money.",
-        fullDescription: "Khaled enters an underground tunnel to find himself in Zikola, where currency is measured in human intelligence.",
-        price: 110,
-        oldPrice: 135,
-        quantity: 40,
-        category: "Novels",
-        image: "/menuPicture/6.webp",
-        author: "Amr Abdel Hamid",
-        publisher: "Aseer Al-Kotob",
-        pagesCount: 288,
-      },
-    }),
-  ]);
-
-  console.log("Seeding orders and order items...");
-  const order1 = await prisma.order.create({
-    data: {
-      userId: customerUser.id,
-      address: "Luxor - Television Street - Next to Al-Shifa Pharmacy - 3rd Floor",
-      notes: "Please call 30 minutes before arrival",
-      paymentMethod: PaymentMethod.INSTAPAY,
-      transferNumber: "01012345678",
-      subtotal: 330,
-      deliveryFee: 20,
-      total: 350,
-      status: OrderStatus.CONFIRMED,
-      items: {
-        create: [
-          {
-            bookId: books[0].id,
-            quantity: 1,
-            priceAtBuy: 180,
-          },
-          {
-            bookId: books[1].id,
-            quantity: 1,
-            priceAtBuy: 150,
-          },
-        ],
-      },
-    },
-  });
-
-  const order2 = await prisma.order.create({
-    data: {
-      userId: customerUser.id,
-      address: "Luxor - Al-Awamiya - Behind Public Library",
-      notes: "Wrap books as a gift if possible",
-      paymentMethod: PaymentMethod.VODAFONE_CASH,
-      transferNumber: "01098765432",
-      subtotal: 410,
-      deliveryFee: 20,
-      total: 430,
-      status: OrderStatus.PENDING,
-      items: {
-        create: [
-          {
-            bookId: books[2].id,
-            quantity: 1,
-            priceAtBuy: 220,
-          },
-          {
-            bookId: books[3].id,
-            quantity: 2,
-            priceAtBuy: 95,
-          },
-        ],
-      },
-    },
-  });
-
-  console.log("Database seeded successfully:", {
-    adminId: adminUser.id,
-    customerId: customerUser.id,
-    booksCount: books.length,
-    orderIds: [order1.id, order2.id],
-  });
+  console.log("\nDemo seed completed.");
+  console.log(`Admin: ${ADMIN_EMAIL} / ${ADMIN_PASSWORD}`);
+  console.log(`Customers: demo01@example.com ... demo29@example.com`);
+  console.log(`Customer password: ${DEMO_CUSTOMER_PASSWORD}`);
+  console.log(`A Session row expires in ${SESSION_DAYS} days for each seeded user.`);
+  console.log("Note: sign in through Better Auth to receive the actual browser session cookie.");
 }
 
 main()
   .catch((error) => {
-    console.error("Error seeding database:", error);
-    process.exit(1);
+    console.error("Error seeding demo users:", error);
+    process.exitCode = 1;
   })
   .finally(async () => {
     await prisma.$disconnect();
   });
-
-
-  
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

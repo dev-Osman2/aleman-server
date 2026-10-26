@@ -1,9 +1,14 @@
-import { sendTelegramMessage } from "./telegram/telegramClient";
+import {
+  sendTelegramMessage,
+  clearAllTelegramMessages,
+} from "./telegram/telegramClient";
 import {
   formatConfirmedOrderForPrep,
   formatOrderStatusMessage,
   formatFeedbackMessage,
 } from "./telegram/telegramFormatters";
+
+export { clearAllTelegramMessages };
 
 export const notifyConfirmedOrder = async (order: any): Promise<boolean> => {
   try {

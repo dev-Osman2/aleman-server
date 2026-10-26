@@ -115,6 +115,7 @@ model Order {
   status         OrderStatus   @default(PENDING)
   createdAt      DateTime      @default(now())
 
+  telegramMessageId Int?
   userId         String
   user           User          @relation(fields: [userId], references: [id])
 

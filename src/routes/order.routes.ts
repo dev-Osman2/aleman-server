@@ -10,10 +10,10 @@ import { Router } from "express";
 
 const router = Router();
 
-// إرسال المقترح متاح للجميع مع التقاط بيانات الحساب إن كان مسجلاً
+
 router.post("/feedback", optionalAuth, createFeedback);
 
-// المسارات التي تتطلب تسجيل الدخول
+
 router.use(requireAuth);
 
 router.post("/", createOrder);

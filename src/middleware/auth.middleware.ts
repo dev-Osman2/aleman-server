@@ -58,7 +58,7 @@ export const optionalAuth = async (
       req.session = session.session;
     }
   } catch {
-    // Optional auth - gracefully continue unauthenticated
+    
   }
   next();
 };

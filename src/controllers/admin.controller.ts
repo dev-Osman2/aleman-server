@@ -1,7 +1,10 @@
 import { Request, Response } from "express";
 import { OrderStatus } from "@prisma/client";
 import { prisma } from "../prisma";
-import { notifyConfirmedOrder } from "../services/telegramService";
+import {
+  notifyConfirmedOrder,
+  clearAllTelegramMessages,
+} from "../services/telegramService";
 
 
 export const getAdminStats = async (req: Request, res: Response): Promise<void> => {
@@ -394,6 +397,37 @@ export const updateOrderAdminNote = async (req: Request, res: Response): Promise
     res.status(500).json({
       success: false,
       message: "Internal server error while updating admin note",
+    });
+  }
+};
+
+export const clearAllOrders = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const [deletedItems, deletedOrders] = await prisma.$transaction([
+      prisma.orderItem.deleteMany({}),
+      prisma.order.deleteMany({}),
+    ]);
+
+    
+    const telegramMessagesDeleted = await clearAllTelegramMessages();
+
+    res.status(200).json({
+      success: true,
+      message: "تم تفريغ قاعدة بيانات الطلبات بالكامل ومسح رسائل التلجرام",
+      data: {
+        deletedOrdersCount: deletedOrders.count,
+        deletedItemsCount: deletedItems.count,
+        telegramMessagesDeleted,
+      },
+    });
+  } catch (error) {
+    console.error("Error clearing all orders:", error);
+    res.status(500).json({
+      success: false,
+      message: "فشل في مسح وتفريغ الطلبات",
     });
   }
 };

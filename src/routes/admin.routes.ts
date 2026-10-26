@@ -9,25 +9,23 @@ import {
   updateOrderStatus,
   getAdminUsers, 
   updateOrderAdminNote,
+  clearAllOrders,
 } from "../controllers/admin.controller";
 
 const router = Router();
 
 router.use(requireAdmin);
 
-
 router.get("/stats", getAdminStats);
 
-
 router.get("/users", getAdminUsers);
-
 
 router.post("/books", createBook);
 router.put("/books/:id", updateBook);
 router.delete("/books/:id", deleteBook);
 
-
 router.get("/orders", getAdminOrders);
+router.delete("/orders/clear-all", clearAllOrders);
 router.patch("/orders/:id/status", updateOrderStatus);
 router.patch("/orders/:id/note", updateOrderAdminNote);
 router.patch("/orders/:id/admin-note", updateOrderAdminNote);
