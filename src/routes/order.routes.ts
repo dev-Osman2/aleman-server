@@ -1,5 +1,4 @@
-import { Router } from "express";
-import { requireAuth } from "../middleware/auth.middleware";
+import { requireAuth, optionalAuth } from "../middleware/auth.middleware";
 import {
   createOrder,
   createFeedback,
@@ -7,22 +6,21 @@ import {
   getMyOrderById,
   updateMyOrder,
 } from "../controllers/order.controller";
+import { Router } from "express";
 
 const router = Router();
 
-// مسارات الطلبات تتطلب تسجيل دخول المستخدم
+// إرسال المقترح متاح للجميع مع التقاط بيانات الحساب إن كان مسجلاً
+router.post("/feedback", optionalAuth, createFeedback);
+
+// المسارات التي تتطلب تسجيل الدخول
 router.use(requireAuth);
 
-// [C] إنشاء طلب جديد
 router.post("/", createOrder);
 
-// إرسال رأي أو طلب توفير كتاب
-router.post("/feedback", createFeedback);
-
-// [R] قراءة قائمة الطلبات
 router.get("/my-orders", getMyOrders);
 
-// [R] قراءة تفاصيل طلب فردي
+
 router.get("/:id", getMyOrderById);
 
 

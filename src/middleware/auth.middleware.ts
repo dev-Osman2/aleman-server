@@ -2,7 +2,7 @@ import { Request, Response, NextFunction } from "express";
 import { fromNodeHeaders } from "better-auth/node";
 import { auth } from "../auth";
 
-// توسيع واجهة Request لتمرير بيانات الجلسة والمستخدم إلى المتحكمات اللاحقة
+
 declare global {
   namespace Express {
     interface Request {
@@ -12,7 +12,7 @@ declare global {
   }
 }
 
-// 1. برمجية وسيطة للتحقق من تسجيل الدخول فقط (لأي مستخدم)
+
 export const requireAuth = async (
   req: Request,
   res: Response,
@@ -43,7 +43,27 @@ export const requireAuth = async (
   }
 };
 
-// 2. برمجية وسيطة للتحقق من رتبة الأدمن حصراً
+export const optionalAuth = async (
+  req: Request,
+  res: Response,
+  next: NextFunction
+): Promise<void> => {
+  try {
+    const session = await auth.api.getSession({
+      headers: fromNodeHeaders(req.headers),
+    });
+
+    if (session) {
+      req.user = session.user;
+      req.session = session.session;
+    }
+  } catch {
+    // Optional auth - gracefully continue unauthenticated
+  }
+  next();
+};
+
+
 export const requireAdmin = async (
   req: Request,
   res: Response,
@@ -62,7 +82,7 @@ export const requireAdmin = async (
       return;
     }
 
-    // فحص رتبة المستخدم
+    
     if (session.user.role !== "ADMIN") {
       res.status(403).json({
         success: false,

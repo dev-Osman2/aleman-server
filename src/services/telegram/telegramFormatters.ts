@@ -35,8 +35,9 @@ export const formatOrderStatusMessage = (order: any, oldStatus: string, newStatu
 };
 
 export const formatFeedbackMessage = (suggestion: any, user?: any): string => {
-  const userName = user?.name || "عميل";
-  const userPhone = user?.phone || "غير متوفر";
+  const userName =
+    user?.name || suggestion?.customerName || "عميل زائر (بدون تسجيل)";
+  const userPhone = user?.phone || suggestion?.phone || "غير متوفر";
 
   return `💡 <b>ملاحظة / اقتراح جديد</b>\n\n` +
     `👤 <b>المرسل:</b> ${userName}\n` +

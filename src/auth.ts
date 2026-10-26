@@ -1,5 +1,5 @@
 import { betterAuth } from "better-auth";
-import { bearer } from "better-auth/plugins"; // <-- استيراد إضافة البيرر
+import { bearer } from "better-auth/plugins"; 
 import { prismaAdapter } from "better-auth/adapters/prisma";
 import { prisma } from "./prisma";
 
@@ -8,7 +8,7 @@ export const auth = betterAuth({
     provider: "postgresql",
   }),
   plugins: [
-    bearer(), // <-- تفعيل قراءة Authorization: Bearer <token>
+    bearer(), 
   ],
   emailAndPassword: {
     enabled: true,

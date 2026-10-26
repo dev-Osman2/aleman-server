@@ -20,7 +20,7 @@ export const sendTelegramMessage = async (text: string): Promise<boolean> => {
 
     return response.ok;
   } catch {
-    // Fail silently without breaking application flow
+    
     return false;
   }
 };

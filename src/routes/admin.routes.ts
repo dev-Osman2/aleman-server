@@ -7,7 +7,7 @@ import {
   deleteBook,
   getAdminOrders,
   updateOrderStatus,
-  getAdminUsers, // <-- استيراد الدالة الجديدة
+  getAdminUsers, 
   updateOrderAdminNote,
 } from "../controllers/admin.controller";
 
@@ -15,18 +15,18 @@ const router = Router();
 
 router.use(requireAdmin);
 
-// إحصائيات الأدمن
+
 router.get("/stats", getAdminStats);
 
-// عرض كل المستخدمين المسجلين (الإسم، الإيميل، الرقم)
+
 router.get("/users", getAdminUsers);
 
-// إدارة الكتب
+
 router.post("/books", createBook);
 router.put("/books/:id", updateBook);
 router.delete("/books/:id", deleteBook);
 
-// إدارة الطلبات
+
 router.get("/orders", getAdminOrders);
 router.patch("/orders/:id/status", updateOrderStatus);
 router.patch("/orders/:id/note", updateOrderAdminNote);

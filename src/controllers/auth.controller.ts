@@ -3,7 +3,8 @@ import { fromNodeHeaders } from "better-auth/node";
 import { auth } from "../auth";
 import { prisma } from "../prisma";
 
-// 1. إنشاء حساب جديد (Register)
+const EGYPTIAN_PHONE_REGEX = /^01[0125][0-9]{8}$/;
+
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, phone, email, password } = req.body;
@@ -11,18 +12,26 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
     if (!name || !phone || !email || !password) {
       res.status(400).json({
         success: false,
-        message: "All fields are required (name, phone, email, password)",
+        message: "جميع الحقول مطلوبة (الاسم، رقم الهاتف، البريد الإلكتروني، كلمة المرور)",
       });
       return;
     }
 
-    // استدعاء Better Auth لإنشاء المستخدم وتشفير الباسوورد وتوليد الجلسة
+    const trimmedPhone = String(phone).trim();
+    if (!EGYPTIAN_PHONE_REGEX.test(trimmedPhone)) {
+      res.status(400).json({
+        success: false,
+        message: "رقم الهاتف غير صالح، يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً",
+      });
+      return;
+    }
+
     const response = await auth.api.signUpEmail({
       body: {
-        name,
-        email,
+        name: String(name).trim(),
+        email: String(email).trim(),
         password,
-        phone, // يمرر تلقائياً إلى additionalFields
+        phone: trimmedPhone, 
       },
       asResponse: false,
     });
@@ -41,10 +50,10 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-// 2. تسجيل الدخول عبر البريد الإلكتروني أو رقم الهاتف (Login)
+
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    // نقبل الحقل سواء أرسله الفرونت إند باسم identifier أو email أو phone
+    
     const { identifier, email, phone, password } = req.body;
     const loginInput = (identifier || email || phone || "").trim();
 
@@ -58,7 +67,7 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
 
     let targetEmail = loginInput;
 
-    // إذا كان المدخل لا يحتوي على '@' فهذا يعني أن المستخدم أدخل رقم هاتفه
+    
     if (!loginInput.includes("@")) {
       const userByPhone = await prisma.user.findUnique({
         where: { phone: loginInput },
@@ -76,7 +85,7 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
       targetEmail = userByPhone.email;
     }
 
-    // التحقق من صحة كلمة المرور وإنشاء توكن الجلسة عبر Better Auth
+    
     const response = await auth.api.signInEmail({
       body: {
         email: targetEmail,
@@ -99,10 +108,10 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// 3. التحقق من بيانات المستخدم الحالي من خلال التوكن (Get Current Session)
+
 export const getMe = async (req: Request, res: Response): Promise<void> => {
   try {
-    // تحويل req.headers الخاصة بـ Express لتنسيق Better Auth
+    
     const session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
@@ -128,10 +137,10 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// 4. تعديل بيانات المستخدم الحالي (Update User Profile)
+
 export const updateProfile = async (req: Request, res: Response): Promise<void> => {
   try {
-    // التحقق من صحة الجلسة وصاحب التوكن أولاً
+    
     const session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
@@ -146,7 +155,6 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
 
     const { name, phone } = req.body;
 
-    // التأكد من إرسال حقل واحد على الأقل للتعديل
     if (!name && !phone) {
       res.status(400).json({
         success: false,
@@ -155,25 +163,33 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // إذا أراد المستخدم تغيير رقم الهاتف، نتأكد أنه غير مستخدم من حساب آخر
-    if (phone && phone !== session.user.phone) {
+    const trimmedPhone = phone ? String(phone).trim() : undefined;
+    if (trimmedPhone && !EGYPTIAN_PHONE_REGEX.test(trimmedPhone)) {
+      res.status(400).json({
+        success: false,
+        message: "رقم الهاتف غير صالح، يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً",
+      });
+      return;
+    }
+
+    if (trimmedPhone && trimmedPhone !== session.user.phone) {
       const phoneTaken = await prisma.user.findUnique({
-        where: { phone },
+        where: { phone: trimmedPhone },
       });
 
       if (phoneTaken) {
         res.status(409).json({
           success: false,
-          message: "This phone number is already registered by another account",
+          message: "هذا الرقم مسجل بالفعل بحساب آخر",
         });
         return;
       }
     }
 
-    // تنفيذ أمر التعديل الفعلي في PostgreSQL عبر Prisma
+    
     const updatedUser = await prisma.user.update({
       where: {
-        id: session.user.id, // التعديل لحساب صاحب التوكن فقط
+        id: session.user.id, 
       },
       data: {
         ...(name ? { name } : {}),
@@ -203,10 +219,10 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-// 5. حذف الحساب وجلساته بالكامل (Delete User Account)
+
 export const deleteAccount = async (req: Request, res: Response): Promise<void> => {
   try {
-    // التحقق من صاحب التوكن
+    
     const session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
@@ -221,29 +237,29 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
 
     const userId = session.user.id;
 
-    // تنفيذ الحذف الكامل في معاملة واحدة تشمل الطلبات والجلسات وحساب المصادقة
+    
     await prisma.$transaction(async (tx) => {
-      // 1. حذف عناصر الطلبات المرتبطة بطلبات المستخدم
+      
       await tx.orderItem.deleteMany({
         where: { order: { userId } },
       });
 
-      // 2. حذف طلبات المستخدم
+      
       await tx.order.deleteMany({
         where: { userId },
       });
 
-      // 3. حذف جلسات المستخدم في Better Auth
+      
       await tx.session.deleteMany({
         where: { userId },
       });
 
-      // 4. حذف حساب المصادقة وكلمة المرور
+      
       await tx.account.deleteMany({
         where: { userId },
       });
 
-      // 5. حذف سجل المستخدم نهائياً
+      
       await tx.user.delete({
         where: { id: userId },
       });

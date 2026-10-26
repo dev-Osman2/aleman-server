@@ -14,11 +14,15 @@ export const createFeedback = async (
 ): Promise<void> => {
   const message =
     typeof req.body?.message === "string" ? req.body.message.trim() : "";
+  const customerName =
+    typeof req.body?.customerName === "string" ? req.body.customerName.trim() : "";
+  const phone =
+    typeof req.body?.phone === "string" ? req.body.phone.trim() : "";
 
   if (!message) {
     res.status(400).json({
       success: false,
-      message: "Feedback message is required",
+      message: "يرجى كتابة نص المقترح أو الرسالة",
     });
     return;
   }
@@ -26,6 +30,8 @@ export const createFeedback = async (
   try {
     const feedback = {
       content: message,
+      customerName: customerName || undefined,
+      phone: phone || undefined,
       createdAt: new Date(),
     };
 
@@ -33,7 +39,7 @@ export const createFeedback = async (
 
     res.status(201).json({
       success: true,
-      message: "Feedback submitted successfully",
+      message: "تم إرسال المقترح بنجاح",
     });
   } catch (error) {
     console.error("Feedback submission error:", error);
@@ -44,7 +50,7 @@ export const createFeedback = async (
   }
 };
 
-// 1. [CREATE] إنشاء طلب جديد مع إنقاص المخزون فورياً
+
 export const createOrder = async (
   req: Request,
   res: Response,
@@ -108,7 +114,7 @@ export const createOrder = async (
           );
         }
 
-        // إنقاص المخزون
+        
         await tx.book.update({
           where: { id: book.id },
           data: {
@@ -127,7 +133,7 @@ export const createOrder = async (
 
       const total = subtotal + deliveryFee;
 
-      // تحديث اسم ورقم هاتف المستخدم إذا قام بتعديلهما
+      
       if (name || phone) {
         const updateData: { name?: string; phone?: string } = {};
         if (typeof name === "string" && name.trim()) {
@@ -195,7 +201,7 @@ export const createOrder = async (
   }
 };
 
-// 2. [READ ALL] جلب قائمة كل طلبات المستخدم الحالي
+
 export const getMyOrders = async (
   req: Request,
   res: Response,
@@ -231,7 +237,7 @@ export const getMyOrders = async (
   }
 };
 
-// 3. [READ ONE] جلب تفاصيل طلب واحد محدد للمستخدم
+
 export const getMyOrderById = async (
   req: Request,
   res: Response,
@@ -245,11 +251,11 @@ export const getMyOrderById = async (
       return;
     }
 
-    // البحث مع شرط أن يكون الطلب يخص هذا المستخدم تحديداً
+    
     const order = await prisma.order.findFirst({
       where: {
         id: orderId,
-        userId: userId, // صمام أمان لمنع رؤية طلبات الآخرين
+        userId: userId, 
       },
       include: {
         items: {
@@ -283,7 +289,7 @@ export const getMyOrderById = async (
   }
 };
 
-// 4. [UPDATE] تعديل بيانات التوصيل للطلب (مسموح فقط إذا كان قيد المراجعة PENDING)
+
 export const updateMyOrder = async (
   req: Request,
   res: Response,
@@ -315,7 +321,7 @@ export const updateMyOrder = async (
       return;
     }
 
-    // منع التعديل إذا قام الأدمن بتأكيد الطلب
+    
     if (existingOrder.status !== OrderStatus.PENDING) {
       res.status(400).json({
         success: false,

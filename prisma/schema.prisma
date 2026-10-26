@@ -23,7 +23,7 @@ enum OrderStatus {
   CANCELLED
 }
 
-// 1. جدول المستخدمين (متوافق مع Better Auth ومخصص للمكتبة)
+
 model User {
   id            String    @id @default(uuid())
   name          String
@@ -33,14 +33,14 @@ model User {
   image         String?
   role          Role      @default(CUSTOMER)
   createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @default(now()) @updatedAt // <-- إضافة @default(now()) هنا
+  updatedAt     DateTime  @default(now()) @updatedAt 
 
   orders        Order[]
   sessions      Session[]
   accounts      Account[]
 }
 
-// 2. جدول الجلسات لـ Better Auth
+
 model Session {
   id        String   @id @default(uuid())
   expiresAt DateTime
@@ -53,7 +53,7 @@ model Session {
   user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
 }
 
-// 3. جدول الحسابات وكلمات المرور المشفرة
+
 model Account {
   id                    String    @id @default(uuid())
   accountId             String
@@ -71,7 +71,7 @@ model Account {
   updatedAt             DateTime  @updatedAt
 }
 
-// 4. جدول التحقق
+
 model Verification {
   id         String    @id @default(uuid())
   identifier String
@@ -81,7 +81,7 @@ model Verification {
   updatedAt  DateTime? @updatedAt
 }
 
-// 5. جدول الكتب (كما هو)
+
 model Book {
   id              String      @id @default(uuid())
   code            String         @unique
@@ -101,7 +101,7 @@ model Book {
   orderItems      OrderItem[]
 }
 
-// 6. جدول الطلبات (كما هو)
+
 model Order {
   id             Int           @id @default(autoincrement())
   address        String
@@ -121,7 +121,7 @@ model Order {
   items          OrderItem[]
 }
 
-// 7. جدول عناصر الطلب (كما هو)
+
 model OrderItem {
   id         String @id @default(uuid())
   quantity   Int

@@ -3,7 +3,7 @@ import { OrderStatus } from "@prisma/client";
 import { prisma } from "../prisma";
 import { notifyConfirmedOrder } from "../services/telegramService";
 
-// 1. جلب إحصائيات لوحة التحكم
+
 export const getAdminStats = async (req: Request, res: Response): Promise<void> => {
   try {
     const [totalBooks, totalOrders, totalUsers, revenueResult] = await Promise.all([
@@ -35,7 +35,7 @@ export const getAdminStats = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-// 2. إضافة كتاب جديد (Create Book)
+
 export const createBook = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -61,7 +61,7 @@ export const createBook = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // التحقق من عدم تكرار كود الكتاب
+    
     const existingBook = await prisma.book.findUnique({
       where: { code: String(code) },
     });
@@ -102,13 +102,13 @@ export const createBook = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-// 3. تعديل بيانات أو مخزون كتاب (Update Book)
+
 export const updateBook = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const updateData = req.body;
 
-    // فحص وجود الكتاب أولاً
+    
     const book = await prisma.book.findUnique({
       where: { id },
     });
@@ -118,7 +118,7 @@ export const updateBook = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // تجهيز البيانات المراد تعديلها مع معالجة الأرقام
+    
     const dataToUpdate: any = { ...updateData };
     if (updateData.code !== undefined) dataToUpdate.code = String(updateData.code);
     if (updateData.price !== undefined) dataToUpdate.price = Math.round(Number(updateData.price));
@@ -142,12 +142,12 @@ export const updateBook = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-// 4. حذف كتاب من النظام (Delete Book)
+
 export const deleteBook = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
 
-    // التحقق من عدم وجود طلبات مرتبطة بهذا الكتاب
+    
     const orderedItemsCount = await prisma.orderItem.count({
       where: { bookId: id },
     });
@@ -174,7 +174,7 @@ export const deleteBook = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-// جلب قائمة المستخدمين المسجلين في النظام (خاص بالأدمن فقط)
+
 export const getAdminUsers = async (req: Request, res: Response): Promise<void> => {
   try {
     const users = await prisma.user.findMany({
@@ -190,7 +190,7 @@ export const getAdminUsers = async (req: Request, res: Response): Promise<void> 
         phone: true,
         role: true,
         createdAt: true,
-        // جلب عدد الطلبات التي أنشأها كل مستخدم
+        
         _count: {
           select: { orders: true },
         },
@@ -212,7 +212,7 @@ export const getAdminUsers = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-// 5. جلب كافة الطلبات مع التفاصيل للأدمن (Get All Orders)
+
 export const getAdminOrders = async (req: Request, res: Response): Promise<void> => {
   try {
     const { status } = req.query;
@@ -245,13 +245,13 @@ export const getAdminOrders = async (req: Request, res: Response): Promise<void>
   }
 };
 
-// 6. تغيير حالة الطلب: تأكيد أو إلغاء (Update Order Status)
+
 export const updateOrderStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const { status } = req.body;
 
-    // فحص صلاحية الحالة المرسلة
+    
     if (!status || !Object.values(OrderStatus).includes(status)) {
       res.status(400).json({
         success: false,
@@ -277,9 +277,9 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
     const previousStatus = existingOrder.status;
     const targetStatus = status as OrderStatus;
 
-    // معاملة مالية/مخزنية ذرية (Prisma Transaction)
+    
     const updatedOrder = await prisma.$transaction(async (tx) => {
-      // 1. عند إلغاء الطلب (CANCELLED): إرجاع الكمية إلى مخزون الكتب
+      
       if (targetStatus === OrderStatus.CANCELLED && previousStatus !== OrderStatus.CANCELLED) {
         for (const item of existingOrder.items) {
           if (item.bookId) {
@@ -293,7 +293,7 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
         }
       }
 
-      // 2. إذا كان الطلب ملغياً وتمت إعادته إلى قيد الانتظار أو مؤكد: إنقاص المخزون مرة أخرى
+      
       if (previousStatus === OrderStatus.CANCELLED && (targetStatus === OrderStatus.PENDING || targetStatus === OrderStatus.CONFIRMED)) {
         for (const item of existingOrder.items) {
           if (item.bookId) {
@@ -323,7 +323,7 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
       });
     });
 
-    // 3. عند ضغط الأدمن "تأكيد الطلب" (CONFIRMED): إرسال الطلب لجروب التلجرام للتجهيز
+    
     if (targetStatus === OrderStatus.CONFIRMED) {
       try {
         await notifyConfirmedOrder(updatedOrder);
@@ -343,7 +343,7 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
   }
 };
 
-// 7. تحديث ملاحظة الأدمن على الطلب (Update Admin Note)
+
 export const updateOrderAdminNote = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
