@@ -3,7 +3,8 @@ import { fromNodeHeaders } from "better-auth/node";
 import { auth } from "../auth";
 import { prisma } from "../prisma";
 
-// 1. إنشاء حساب جديد (Register)
+const EGYPTIAN_PHONE_REGEX = /^01[0125][0-9]{8}$/;
+
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
   try {
     const { name, phone, email, password } = req.body;
@@ -11,18 +12,26 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
     if (!name || !phone || !email || !password) {
       res.status(400).json({
         success: false,
-        message: "All fields are required (name, phone, email, password)",
+        message: "جميع الحقول مطلوبة (الاسم، رقم الهاتف، البريد الإلكتروني، كلمة المرور)",
       });
       return;
     }
 
-    // استدعاء Better Auth لإنشاء المستخدم وتشفير الباسوورد وتوليد الجلسة
+    const trimmedPhone = String(phone).trim();
+    if (!EGYPTIAN_PHONE_REGEX.test(trimmedPhone)) {
+      res.status(400).json({
+        success: false,
+        message: "رقم الهاتف غير صالح، يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً",
+      });
+      return;
+    }
+
     const response = await auth.api.signUpEmail({
       body: {
-        name,
-        email,
+        name: String(name).trim(),
+        email: String(email).trim(),
         password,
-        phone, // يمرر تلقائياً إلى additionalFields
+        phone: trimmedPhone, 
       },
       asResponse: false,
     });
@@ -41,23 +50,45 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
   }
 };
 
-// 2. تسجيل الدخول (Login)
+
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { email, password } = req.body;
+    
+    const { identifier, email, phone, password } = req.body;
+    const loginInput = (identifier || email || phone || "").trim();
 
-    if (!email || !password) {
+    if (!loginInput || !password) {
       res.status(400).json({
         success: false,
-        message: "Email and password are required",
+        message: "يرجى إدخال البريد الإلكتروني (أو رقم الهاتف) وكلمة المرور",
       });
       return;
     }
 
-    // التحقق من صحة البيانات وإنشاء توكن الجلسة (Session Token)
+    let targetEmail = loginInput;
+
+    
+    if (!loginInput.includes("@")) {
+      const userByPhone = await prisma.user.findUnique({
+        where: { phone: loginInput },
+        select: { email: true },
+      });
+
+      if (!userByPhone) {
+        res.status(401).json({
+          success: false,
+          message: "رقم الهاتف أو كلمة المرور غير صحيحة",
+        });
+        return;
+      }
+
+      targetEmail = userByPhone.email;
+    }
+
+    
     const response = await auth.api.signInEmail({
       body: {
-        email,
+        email: targetEmail,
         password,
       },
       asResponse: false,
@@ -72,15 +103,15 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
     console.error("Error logging in:", error);
     res.status(401).json({
       success: false,
-      message: error?.message || "Invalid email or password",
+      message: "بيانات الدخول غير صحيحة، تأكد من الإيميل/الهاتف وكلمة المرور",
     });
   }
 };
 
-// 3. التحقق من بيانات المستخدم الحالي من خلال التوكن (Get Current Session)
+
 export const getMe = async (req: Request, res: Response): Promise<void> => {
   try {
-    // تحويل req.headers الخاصة بـ Express لتنسيق Better Auth
+    
     const session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
@@ -106,10 +137,10 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
   }
 };
 
-// 4. تعديل بيانات المستخدم الحالي (Update User Profile)
+
 export const updateProfile = async (req: Request, res: Response): Promise<void> => {
   try {
-    // التحقق من صحة الجلسة وصاحب التوكن أولاً
+    
     const session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
@@ -124,7 +155,6 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
 
     const { name, phone } = req.body;
 
-    // التأكد من إرسال حقل واحد على الأقل للتعديل
     if (!name && !phone) {
       res.status(400).json({
         success: false,
@@ -133,25 +163,33 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    // إذا أراد المستخدم تغيير رقم الهاتف، نتأكد أنه غير مستخدم من حساب آخر
-    if (phone && phone !== session.user.phone) {
+    const trimmedPhone = phone ? String(phone).trim() : undefined;
+    if (trimmedPhone && !EGYPTIAN_PHONE_REGEX.test(trimmedPhone)) {
+      res.status(400).json({
+        success: false,
+        message: "رقم الهاتف غير صالح، يجب أن يبدأ بـ 010 أو 011 أو 012 أو 015 ويتكون من 11 رقماً",
+      });
+      return;
+    }
+
+    if (trimmedPhone && trimmedPhone !== session.user.phone) {
       const phoneTaken = await prisma.user.findUnique({
-        where: { phone },
+        where: { phone: trimmedPhone },
       });
 
       if (phoneTaken) {
         res.status(409).json({
           success: false,
-          message: "This phone number is already registered by another account",
+          message: "هذا الرقم مسجل بالفعل بحساب آخر",
         });
         return;
       }
     }
 
-    // تنفيذ أمر التعديل الفعلي في PostgreSQL عبر Prisma
+    
     const updatedUser = await prisma.user.update({
       where: {
-        id: session.user.id, // التعديل لحساب صاحب التوكن فقط
+        id: session.user.id, 
       },
       data: {
         ...(name ? { name } : {}),
@@ -181,10 +219,10 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-// 5. حذف الحساب وجلساته بالكامل (Delete User Account)
+
 export const deleteAccount = async (req: Request, res: Response): Promise<void> => {
   try {
-    // التحقق من صاحب التوكن
+    
     const session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
@@ -199,34 +237,43 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
 
     const userId = session.user.id;
 
-    // فحص ما إذا كان للمستخدم طلبات سابقة في المتجر
-    const userOrdersCount = await prisma.order.count({
-      where: { userId },
-    });
-
-    if (userOrdersCount > 0) {
-      res.status(400).json({
-        success: false,
-        message: "Cannot delete account with existing purchase orders for auditing reasons",
+    
+    await prisma.$transaction(async (tx) => {
+      
+      await tx.orderItem.deleteMany({
+        where: { order: { userId } },
       });
-      return;
-    }
 
-    // تنفيذ الحذف عبر Prisma
-    // بسبب وجود onDelete: Cascade، سيقوم PostgreSQL تلقائياً بحذف الجلسات (Sessions) وحسابات الدخول (Accounts) المرتبطة
-    await prisma.user.delete({
-      where: { id: userId },
+      
+      await tx.order.deleteMany({
+        where: { userId },
+      });
+
+      
+      await tx.session.deleteMany({
+        where: { userId },
+      });
+
+      
+      await tx.account.deleteMany({
+        where: { userId },
+      });
+
+      
+      await tx.user.delete({
+        where: { id: userId },
+      });
     });
 
     res.status(200).json({
       success: true,
-      message: "Account and associated sessions deleted successfully",
+      message: "تم حذف الحساب وكافة البيانات المرتبطة به بنجاح",
     });
   } catch (error) {
     console.error("Error deleting account:", error);
     res.status(500).json({
       success: false,
-      message: "Internal server error while deleting account",
+      message: "حدث خطأ أثناء محاولة حذف الحساب",
     });
   }
 };

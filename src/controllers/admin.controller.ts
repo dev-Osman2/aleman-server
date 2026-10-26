@@ -1,8 +1,12 @@
 import { Request, Response } from "express";
 import { OrderStatus } from "@prisma/client";
 import { prisma } from "../prisma";
+import {
+  notifyConfirmedOrder,
+  clearAllTelegramMessages,
+} from "../services/telegramService";
 
-// 1. جلب إحصائيات لوحة التحكم
+
 export const getAdminStats = async (req: Request, res: Response): Promise<void> => {
   try {
     const [totalBooks, totalOrders, totalUsers, revenueResult] = await Promise.all([
@@ -34,7 +38,7 @@ export const getAdminStats = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-// 2. إضافة كتاب جديد (Create Book)
+
 export const createBook = async (req: Request, res: Response): Promise<void> => {
   try {
     const {
@@ -60,9 +64,9 @@ export const createBook = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // التحقق من عدم تكرار كود الكتاب
+    
     const existingBook = await prisma.book.findUnique({
-      where: { code: Number(code) },
+      where: { code: String(code) },
     });
 
     if (existingBook) {
@@ -75,12 +79,12 @@ export const createBook = async (req: Request, res: Response): Promise<void> => 
 
     const newBook = await prisma.book.create({
       data: {
-        code: Number(code),
+        code: String(code),
         title,
         description,
         fullDescription,
-        price: parseFloat(price),
-        oldPrice: oldPrice ? parseFloat(oldPrice) : null,
+        price: Math.round(Number(price)),
+        oldPrice: oldPrice ? Math.round(Number(oldPrice)) : null,
         quantity: quantity !== undefined ? Number(quantity) : 0,
         category,
         image,
@@ -101,13 +105,13 @@ export const createBook = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-// 3. تعديل بيانات أو مخزون كتاب (Update Book)
+
 export const updateBook = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const updateData = req.body;
 
-    // فحص وجود الكتاب أولاً
+    
     const book = await prisma.book.findUnique({
       where: { id },
     });
@@ -117,13 +121,13 @@ export const updateBook = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    // تجهيز البيانات المراد تعديلها مع معالجة الأرقام
+    
     const dataToUpdate: any = { ...updateData };
-    if (updateData.code !== undefined) dataToUpdate.code = Number(updateData.code);
-    if (updateData.price !== undefined) dataToUpdate.price = parseFloat(updateData.price);
-    if (updateData.oldPrice !== undefined) dataToUpdate.oldPrice = parseFloat(updateData.oldPrice);
+    if (updateData.code !== undefined) dataToUpdate.code = String(updateData.code);
+    if (updateData.price !== undefined) dataToUpdate.price = Math.round(Number(updateData.price));
+    if (updateData.oldPrice !== undefined) dataToUpdate.oldPrice = updateData.oldPrice ? Math.round(Number(updateData.oldPrice)) : null;
     if (updateData.quantity !== undefined) dataToUpdate.quantity = Number(updateData.quantity);
-    if (updateData.pagesCount !== undefined) dataToUpdate.pagesCount = Number(updateData.pagesCount);
+    if (updateData.pagesCount !== undefined) dataToUpdate.pagesCount = updateData.pagesCount ? Number(updateData.pagesCount) : null;
 
     const updatedBook = await prisma.book.update({
       where: { id },
@@ -141,12 +145,12 @@ export const updateBook = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-// 4. حذف كتاب من النظام (Delete Book)
+
 export const deleteBook = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
 
-    // التحقق من عدم وجود طلبات مرتبطة بهذا الكتاب
+    
     const orderedItemsCount = await prisma.orderItem.count({
       where: { bookId: id },
     });
@@ -173,7 +177,7 @@ export const deleteBook = async (req: Request, res: Response): Promise<void> => 
   }
 };
 
-// جلب قائمة المستخدمين المسجلين في النظام (خاص بالأدمن فقط)
+
 export const getAdminUsers = async (req: Request, res: Response): Promise<void> => {
   try {
     const users = await prisma.user.findMany({
@@ -189,7 +193,7 @@ export const getAdminUsers = async (req: Request, res: Response): Promise<void> 
         phone: true,
         role: true,
         createdAt: true,
-        // جلب عدد الطلبات التي أنشأها كل مستخدم
+        
         _count: {
           select: { orders: true },
         },
@@ -211,7 +215,7 @@ export const getAdminUsers = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-// 5. جلب كافة الطلبات مع التفاصيل للأدمن (Get All Orders)
+
 export const getAdminOrders = async (req: Request, res: Response): Promise<void> => {
   try {
     const { status } = req.query;
@@ -220,7 +224,7 @@ export const getAdminOrders = async (req: Request, res: Response): Promise<void>
       where: status && typeof status === "string" ? { status: status as OrderStatus } : {},
       include: {
         user: {
-          select: { name: true, phone: true, email: true },
+          select: { name: true, phone: true, email: true, role: true },
         },
         items: {
           include: {
@@ -244,13 +248,13 @@ export const getAdminOrders = async (req: Request, res: Response): Promise<void>
   }
 };
 
-// 6. تغيير حالة الطلب: تأكيد أو إلغاء (Update Order Status)
+
 export const updateOrderStatus = async (req: Request, res: Response): Promise<void> => {
   try {
     const { id } = req.params;
     const { status } = req.body;
 
-    // فحص صلاحية الحالة المرسلة
+    
     if (!status || !Object.values(OrderStatus).includes(status)) {
       res.status(400).json({
         success: false,
@@ -259,13 +263,77 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
       return;
     }
 
-    const updatedOrder = await prisma.order.update({
-      where: { id: Number(id) },
-      data: { status: status as OrderStatus },
+    const orderId = Number(id);
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: orderId },
       include: {
-        user: { select: { name: true, phone: true } },
+        items: true,
+        user: { select: { name: true, phone: true, email: true, role: true } },
       },
     });
+
+    if (!existingOrder) {
+      res.status(404).json({ success: false, message: "Order not found" });
+      return;
+    }
+
+    const previousStatus = existingOrder.status;
+    const targetStatus = status as OrderStatus;
+
+    
+    const updatedOrder = await prisma.$transaction(async (tx) => {
+      
+      if (targetStatus === OrderStatus.CANCELLED && previousStatus !== OrderStatus.CANCELLED) {
+        for (const item of existingOrder.items) {
+          if (item.bookId) {
+            await tx.book.update({
+              where: { id: item.bookId },
+              data: {
+                quantity: { increment: item.quantity },
+              },
+            });
+          }
+        }
+      }
+
+      
+      if (previousStatus === OrderStatus.CANCELLED && (targetStatus === OrderStatus.PENDING || targetStatus === OrderStatus.CONFIRMED)) {
+        for (const item of existingOrder.items) {
+          if (item.bookId) {
+            await tx.book.update({
+              where: { id: item.bookId },
+              data: {
+                quantity: { decrement: item.quantity },
+              },
+            });
+          }
+        }
+      }
+
+      return await tx.order.update({
+        where: { id: orderId },
+        data: { status: targetStatus },
+        include: {
+          user: { select: { name: true, phone: true, email: true, role: true } },
+          items: {
+            include: {
+              book: {
+                select: { code: true, title: true, image: true },
+              },
+            },
+          },
+        },
+      });
+    });
+
+    
+    if (targetStatus === OrderStatus.CONFIRMED) {
+      try {
+        await notifyConfirmedOrder(updatedOrder);
+      } catch (tgError) {
+        console.error("Failed to dispatch order to Telegram:", tgError);
+      }
+    }
 
     res.status(200).json({
       success: true,
@@ -275,5 +343,91 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
   } catch (error) {
     console.error("Error updating order status:", error);
     res.status(500).json({ success: false, message: "Internal server error while updating status" });
+  }
+};
+
+
+export const updateOrderAdminNote = async (req: Request, res: Response): Promise<void> => {
+  try {
+    const { id } = req.params;
+    const { adminNote } = req.body;
+
+    const orderId = Number(id);
+    if (isNaN(orderId)) {
+      res.status(400).json({ success: false, message: "Invalid order ID" });
+      return;
+    }
+
+    const existingOrder = await prisma.order.findUnique({
+      where: { id: orderId },
+    });
+
+    if (!existingOrder) {
+      res.status(404).json({ success: false, message: "Order not found" });
+      return;
+    }
+
+    const trimmedNote =
+      typeof adminNote === "string" && adminNote.trim() !== ""
+        ? adminNote.trim()
+        : null;
+
+    const updatedOrder = await prisma.order.update({
+      where: { id: orderId },
+      data: { adminNote: trimmedNote },
+      include: {
+        user: { select: { name: true, phone: true, email: true, role: true } },
+        items: {
+          include: {
+            book: {
+              select: { code: true, title: true, image: true },
+            },
+          },
+        },
+      },
+    });
+
+    res.status(200).json({
+      success: true,
+      message: "Order admin note updated successfully",
+      data: updatedOrder,
+    });
+  } catch (error) {
+    console.error("Error updating order admin note:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error while updating admin note",
+    });
+  }
+};
+
+export const clearAllOrders = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    const [deletedItems, deletedOrders] = await prisma.$transaction([
+      prisma.orderItem.deleteMany({}),
+      prisma.order.deleteMany({}),
+    ]);
+
+    
+    const telegramMessagesDeleted = await clearAllTelegramMessages();
+
+    res.status(200).json({
+      success: true,
+      message: "تم تفريغ قاعدة بيانات الطلبات بالكامل ومسح رسائل التلجرام",
+      data: {
+        deletedOrdersCount: deletedOrders.count,
+        deletedItemsCount: deletedItems.count,
+        telegramMessagesDeleted,
+      },
+    });
+  } catch (error) {
+    console.error("Error clearing all orders:", error);
+    res.status(500).json({
+      success: false,
+      message: "فشل في مسح وتفريغ الطلبات",
+    });
   }
 };
