@@ -83,7 +83,9 @@ export const createOrder = async (
       return;
     }
 
-    const deliveryFee = 20;
+    const isCashier = req.user?.role === "ADMIN";
+    const initialStatus = isCashier ? OrderStatus.CONFIRMED : OrderStatus.PENDING;
+    const deliveryFee = isCashier ? 0 : 20;
 
     const newOrder = await prisma.$transaction(async (tx) => {
       let subtotal = 0;
@@ -167,7 +169,7 @@ export const createOrder = async (
           subtotal,
           deliveryFee,
           total,
-          status: OrderStatus.PENDING,
+          status: initialStatus,
           telegramMessageId: null,
           items: {
             create: orderItemsToCreate,
