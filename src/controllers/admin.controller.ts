@@ -472,3 +472,38 @@ export const clearAllOrders = async (
     });
   }
 };
+
+export const verifyAdminSession = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
+  try {
+    if (!req.user || req.user.role !== "ADMIN") {
+      res.status(403).json({
+        success: false,
+        message: "Forbidden - Admin access required",
+      });
+      return;
+    }
+
+    res.status(200).json({
+      success: true,
+      message: "Admin verified successfully",
+      data: {
+        user: {
+          id: req.user.id,
+          name: req.user.name,
+          email: req.user.email,
+          phone: req.user.phone,
+          role: req.user.role,
+        },
+      },
+    });
+  } catch (error) {
+    console.error("Error verifying admin session:", error);
+    res.status(500).json({
+      success: false,
+      message: "Internal server error during verification",
+    });
+  }
+};

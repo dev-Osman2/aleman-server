@@ -10,13 +10,16 @@ import {
   getAdminUsers, 
   updateOrderAdminNote,
   clearAllOrders,
+  verifyAdminSession,
 } from "../controllers/admin.controller";
 
 const router = Router();
 
 router.use(requireAdmin);
 
+router.get("/verify", verifyAdminSession);
 router.get("/stats", getAdminStats);
+
 
 router.get("/users", getAdminUsers);
 
