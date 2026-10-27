@@ -83,3 +83,63 @@ export const getBookById = async (req: Request, res: Response): Promise<void> =>
     });
   }
 };
+
+
+const getSearchTokens = (value: string | null | undefined): Set<string> =>
+  new Set(
+    (value || "")
+      .toLocaleLowerCase()
+      .split(/[^\p{L}\p{N}]+/u)
+      .filter((token) => token.length > 2)
+  );
+
+export const getRelatedBooks = async (req: Request, res: Response) => {
+  try {
+    const { code } = req.params;
+
+    const currentBook = await prisma.book.findUnique({
+      where: { code: String(code) },
+    });
+
+    if (!currentBook) {
+      return res.status(404).json({ message: 'الكتاب غير موجود' });
+    }
+
+    const candidates = await prisma.book.findMany({
+      where: {
+        id: { not: currentBook.id },
+        quantity: { gt: 0 },
+      },
+    });
+
+    const currentTitleTokens = getSearchTokens(currentBook.title);
+
+    const relatedBooks = candidates
+      .map((book) => {
+        const titleTokens = getSearchTokens(book.title);
+        const titleOverlap = [...currentTitleTokens].filter((token) =>
+          titleTokens.has(token)
+        ).length;
+
+        const score =
+          (book.category === currentBook.category ? 5 : 0) +
+          (book.author && book.author === currentBook.author ? 3 : 0) +
+          (book.publisher && book.publisher === currentBook.publisher ? 2 : 0) +
+          titleOverlap * 2;
+
+        return { book, score };
+      })
+      .filter(({ score }) => score > 0)
+      .sort(
+        (a, b) =>
+          b.score - a.score ||
+          b.book.createdAt.getTime() - a.book.createdAt.getTime()
+      )
+      .slice(0, 4)
+      .map(({ book }) => book);
+
+    return res.status(200).json(relatedBooks);
+  } catch (error) {
+    return res.status(500).json({ message: 'حدث خطأ أثناء جلب المقترحات', error });
+  }
+};
