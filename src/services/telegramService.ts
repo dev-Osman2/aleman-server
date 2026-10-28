@@ -11,9 +11,41 @@ import {
 
 export { clearAllTelegramMessages, deleteTelegramMessage };
 
+export const isCashierOrder = (order: any): boolean => {
+  if (!order) return false;
+
+  if (order.user?.role === "ADMIN") return true;
+
+  const address = typeof order.address === "string" ? order.address : "";
+  if (
+    address.includes("كاشير") ||
+    address.includes("مقر المكتبة") ||
+    address.includes("بيع مباشر")
+  ) {
+    return true;
+  }
+
+  const notes = typeof order.notes === "string" ? order.notes : "";
+  if (notes.includes("كاشير")) {
+    return true;
+  }
+
+  const transferNumber =
+    typeof order.transferNumber === "string" ? order.transferNumber : "";
+  if (transferNumber.includes("كاشير")) {
+    return true;
+  }
+
+  return false;
+};
+
 export const notifyConfirmedOrder = async (
   order: any,
 ): Promise<number | null> => {
+  if (isCashierOrder(order)) {
+    return null;
+  }
+
   try {
     const text = formatConfirmedOrderForPrep(order);
     return await sendTelegramMessage(text);
@@ -29,6 +61,10 @@ export const notifyOrderStatus = async (
   oldStatus: string,
   newStatus: string,
 ): Promise<number | null> => {
+  if (isCashierOrder(order)) {
+    return null;
+  }
+
   try {
     const text = formatOrderStatusMessage(order, oldStatus, newStatus);
     return await sendTelegramMessage(text);
@@ -50,6 +86,7 @@ export const notifyFeedback = async (
 };
 
 export default {
+  isCashierOrder,
   notifyConfirmedOrder,
   notifyNewOrder,
   notifyOrderStatus,
@@ -57,4 +94,3 @@ export default {
   deleteTelegramMessage,
   clearAllTelegramMessages,
 };
-

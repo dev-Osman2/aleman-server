@@ -5,20 +5,24 @@ import {
   notifyConfirmedOrder,
   deleteTelegramMessage,
   clearAllTelegramMessages,
+  isCashierOrder,
 } from "../services/telegramService";
 
-
-export const getAdminStats = async (req: Request, res: Response): Promise<void> => {
+export const getAdminStats = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
-    const [totalBooks, totalOrders, totalUsers, revenueResult] = await Promise.all([
-      prisma.book.count(),
-      prisma.order.count(),
-      prisma.user.count(),
-      prisma.order.aggregate({
-        _sum: { total: true },
-        where: { status: "CONFIRMED" },
-      }),
-    ]);
+    const [totalBooks, totalOrders, totalUsers, revenueResult] =
+      await Promise.all([
+        prisma.book.count(),
+        prisma.order.count(),
+        prisma.user.count(),
+        prisma.order.aggregate({
+          _sum: { total: true },
+          where: { status: "CONFIRMED" },
+        }),
+      ]);
 
     res.status(200).json({
       success: true,
@@ -39,8 +43,10 @@ export const getAdminStats = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-
-export const createBook = async (req: Request, res: Response): Promise<void> => {
+export const createBook = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const {
       code,
@@ -57,15 +63,22 @@ export const createBook = async (req: Request, res: Response): Promise<void> => 
       pagesCount,
     } = req.body;
 
-    if (!code || !title || !description || price === undefined || !category || !image) {
+    if (
+      !code ||
+      !title ||
+      !description ||
+      price === undefined ||
+      !category ||
+      !image
+    ) {
       res.status(400).json({
         success: false,
-        message: "Required fields missing: code, title, description, price, category, image",
+        message:
+          "Required fields missing: code, title, description, price, category, image",
       });
       return;
     }
 
-    
     const existingBook = await prisma.book.findUnique({
       where: { code: String(code) },
     });
@@ -102,17 +115,23 @@ export const createBook = async (req: Request, res: Response): Promise<void> => 
     });
   } catch (error) {
     console.error("Error creating book:", error);
-    res.status(500).json({ success: false, message: "Internal server error while creating book" });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Internal server error while creating book",
+      });
   }
 };
 
-
-export const updateBook = async (req: Request, res: Response): Promise<void> => {
+export const updateBook = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
     const updateData = req.body;
 
-    
     const book = await prisma.book.findUnique({
       where: { id },
     });
@@ -122,13 +141,21 @@ export const updateBook = async (req: Request, res: Response): Promise<void> => 
       return;
     }
 
-    
     const dataToUpdate: any = { ...updateData };
-    if (updateData.code !== undefined) dataToUpdate.code = String(updateData.code);
-    if (updateData.price !== undefined) dataToUpdate.price = Math.round(Number(updateData.price));
-    if (updateData.oldPrice !== undefined) dataToUpdate.oldPrice = updateData.oldPrice ? Math.round(Number(updateData.oldPrice)) : null;
-    if (updateData.quantity !== undefined) dataToUpdate.quantity = Number(updateData.quantity);
-    if (updateData.pagesCount !== undefined) dataToUpdate.pagesCount = updateData.pagesCount ? Number(updateData.pagesCount) : null;
+    if (updateData.code !== undefined)
+      dataToUpdate.code = String(updateData.code);
+    if (updateData.price !== undefined)
+      dataToUpdate.price = Math.round(Number(updateData.price));
+    if (updateData.oldPrice !== undefined)
+      dataToUpdate.oldPrice = updateData.oldPrice
+        ? Math.round(Number(updateData.oldPrice))
+        : null;
+    if (updateData.quantity !== undefined)
+      dataToUpdate.quantity = Number(updateData.quantity);
+    if (updateData.pagesCount !== undefined)
+      dataToUpdate.pagesCount = updateData.pagesCount
+        ? Number(updateData.pagesCount)
+        : null;
 
     const updatedBook = await prisma.book.update({
       where: { id },
@@ -142,16 +169,22 @@ export const updateBook = async (req: Request, res: Response): Promise<void> => 
     });
   } catch (error) {
     console.error("Error updating book:", error);
-    res.status(500).json({ success: false, message: "Internal server error while updating book" });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Internal server error while updating book",
+      });
   }
 };
 
-
-export const deleteBook = async (req: Request, res: Response): Promise<void> => {
+export const deleteBook = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
 
-    
     const orderedItemsCount = await prisma.orderItem.count({
       where: { bookId: id },
     });
@@ -159,7 +192,8 @@ export const deleteBook = async (req: Request, res: Response): Promise<void> => 
     if (orderedItemsCount > 0) {
       res.status(400).json({
         success: false,
-        message: "Cannot delete book that is referenced in existing customer orders. Set quantity to 0 instead.",
+        message:
+          "Cannot delete book that is referenced in existing customer orders. Set quantity to 0 instead.",
       });
       return;
     }
@@ -174,18 +208,25 @@ export const deleteBook = async (req: Request, res: Response): Promise<void> => 
     });
   } catch (error) {
     console.error("Error deleting book:", error);
-    res.status(500).json({ success: false, message: "Internal server error while deleting book" });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Internal server error while deleting book",
+      });
   }
 };
 
-
-export const getAdminUsers = async (req: Request, res: Response): Promise<void> => {
+export const getAdminUsers = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const users = await prisma.user.findMany({
       where: {
-        role : {
-          not: "ADMIN"
-        }
+        role: {
+          not: "ADMIN",
+        },
       },
       select: {
         id: true,
@@ -194,7 +235,7 @@ export const getAdminUsers = async (req: Request, res: Response): Promise<void> 
         phone: true,
         role: true,
         createdAt: true,
-        
+
         _count: {
           select: { orders: true },
         },
@@ -216,13 +257,18 @@ export const getAdminUsers = async (req: Request, res: Response): Promise<void> 
   }
 };
 
-
-export const getAdminOrders = async (req: Request, res: Response): Promise<void> => {
+export const getAdminOrders = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { status } = req.query;
 
     const orders = await prisma.order.findMany({
-      where: status && typeof status === "string" ? { status: status as OrderStatus } : {},
+      where:
+        status && typeof status === "string"
+          ? { status: status as OrderStatus }
+          : {},
       include: {
         user: {
           select: { name: true, phone: true, email: true, role: true },
@@ -245,17 +291,23 @@ export const getAdminOrders = async (req: Request, res: Response): Promise<void>
     });
   } catch (error) {
     console.error("Error fetching admin orders:", error);
-    res.status(500).json({ success: false, message: "Internal server error while fetching orders" });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Internal server error while fetching orders",
+      });
   }
 };
 
-
-export const updateOrderStatus = async (req: Request, res: Response): Promise<void> => {
+export const updateOrderStatus = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
     const { status } = req.body;
 
-    
     if (!status || !Object.values(OrderStatus).includes(status)) {
       res.status(400).json({
         success: false,
@@ -281,10 +333,11 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
     const previousStatus = existingOrder.status;
     const targetStatus = status as OrderStatus;
 
-    
     let updatedOrder = await prisma.$transaction(async (tx) => {
-      
-      if (targetStatus === OrderStatus.CANCELLED && previousStatus !== OrderStatus.CANCELLED) {
+      if (
+        targetStatus === OrderStatus.CANCELLED &&
+        previousStatus !== OrderStatus.CANCELLED
+      ) {
         for (const item of existingOrder.items) {
           if (item.bookId) {
             await tx.book.update({
@@ -297,8 +350,11 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
         }
       }
 
-      
-      if (previousStatus === OrderStatus.CANCELLED && (targetStatus === OrderStatus.PENDING || targetStatus === OrderStatus.CONFIRMED)) {
+      if (
+        previousStatus === OrderStatus.CANCELLED &&
+        (targetStatus === OrderStatus.PENDING ||
+          targetStatus === OrderStatus.CONFIRMED)
+      ) {
         for (const item of existingOrder.items) {
           if (item.bookId) {
             await tx.book.update({
@@ -315,10 +371,14 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
         where: { id: orderId },
         data: {
           status: targetStatus,
-          ...(targetStatus === OrderStatus.CANCELLED ? { telegramMessageId: null } : {}),
+          ...(targetStatus === OrderStatus.CANCELLED
+            ? { telegramMessageId: null }
+            : {}),
         },
         include: {
-          user: { select: { name: true, phone: true, email: true, role: true } },
+          user: {
+            select: { name: true, phone: true, email: true, role: true },
+          },
           items: {
             include: {
               book: {
@@ -330,7 +390,10 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
       });
     });
 
-    if (targetStatus === OrderStatus.CONFIRMED) {
+    if (
+      targetStatus === OrderStatus.CONFIRMED &&
+      !isCashierOrder(updatedOrder)
+    ) {
       try {
         const messageId = await notifyConfirmedOrder(updatedOrder);
         if (messageId) {
@@ -338,7 +401,9 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
             where: { id: orderId },
             data: { telegramMessageId: messageId },
             include: {
-              user: { select: { name: true, phone: true, email: true, role: true } },
+              user: {
+                select: { name: true, phone: true, email: true, role: true },
+              },
               items: {
                 include: {
                   book: {
@@ -357,7 +422,10 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
         try {
           await deleteTelegramMessage(existingOrder.telegramMessageId);
         } catch (tgError) {
-          console.error("Failed to delete order message from Telegram:", tgError);
+          console.error(
+            "Failed to delete order message from Telegram:",
+            tgError,
+          );
         }
       }
     }
@@ -369,12 +437,19 @@ export const updateOrderStatus = async (req: Request, res: Response): Promise<vo
     });
   } catch (error) {
     console.error("Error updating order status:", error);
-    res.status(500).json({ success: false, message: "Internal server error while updating status" });
+    res
+      .status(500)
+      .json({
+        success: false,
+        message: "Internal server error while updating status",
+      });
   }
 };
 
-
-export const updateOrderAdminNote = async (req: Request, res: Response): Promise<void> => {
+export const updateOrderAdminNote = async (
+  req: Request,
+  res: Response,
+): Promise<void> => {
   try {
     const { id } = req.params;
     const { adminNote } = req.body;
@@ -506,4 +581,4 @@ export const verifyAdminSession = async (
       message: "Internal server error during verification",
     });
   }
-};
+};
