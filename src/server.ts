@@ -60,6 +60,9 @@ app.use(
 
 app.use(express.json());
 
+app.use("/api/health", (req, res) => {
+  res.status(200).json({ status: "ok" });
+});
 
 app.use("/api/books", bookRoutes);
 app.use("/api/auth", authRoutes);
