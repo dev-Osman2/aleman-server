@@ -10,6 +10,7 @@ dotenv.config();
 
 const app = express();
 const PORT = process.env.PORT || 5000;
+const isProd = process.env.NODE_ENV === "production";
 
 app.set("trust proxy", 1);
 
@@ -29,17 +30,30 @@ app.use(
       const isAllowed =
         allowedOrigins.includes(origin) ||
         origin.endsWith(".aswany.me") ||
-        origin.endsWith(".vercel.app");
+        origin.endsWith(".vercel.app") ||
+        (!isProd &&
+          (/^http:\/\/localhost(:\d+)?$/.test(origin) ||
+            /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)));
 
       if (isAllowed) {
         return callback(null, true);
       }
 
-      return callback(new Error(`CORS Error: Origin ${origin} not allowed`));
+      return callback(null, false);
     },
     credentials: true,
     methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: ["Content-Type", "Authorization", "Cookie"],
+    allowedHeaders: [
+      "Content-Type",
+      "Authorization",
+      "Cookie",
+      "Cache-Control",
+      "Pragma",
+      "Expires",
+      "X-Requested-With",
+      "Accept",
+      "Origin",
+    ],
     optionsSuccessStatus: 200,
   })
 );
@@ -47,12 +61,17 @@ app.use(
 app.use(express.json());
 
 
-app.use("/api/products", bookRoutes);
 app.use("/api/books", bookRoutes);
 app.use("/api/auth", authRoutes);
 app.use("/api/admin", adminRoutes);
 app.use("/api/orders", orderRoutes); 
 
-app.listen(Number(PORT), "0.0.0.0", () => {
-  console.log(`Server is running on port ${PORT}`);
-});
+if (isProd) {
+  app.listen(Number(PORT), "0.0.0.0", () => {
+    console.log(`Server is running in production on port ${PORT}`);
+  });
+} else {
+  app.listen(Number(PORT), () => {
+    console.log(`Server is running locally on port ${PORT}`);
+  });
+}
