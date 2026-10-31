@@ -7,7 +7,7 @@ const EGYPTIAN_PHONE_REGEX = /^01[0125][0-9]{8}$/;
 
 export const registerUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    const { name, phone, email, password } = req.body;
+    const { name, phone, email, password, image } = req.body;
 
     if (!name || !phone || !email || !password) {
       res.status(400).json({
@@ -31,10 +31,20 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
         name: String(name).trim(),
         email: String(email).trim(),
         password,
-        phone: trimmedPhone, 
+        phone: trimmedPhone,
+        image: image ? String(image).trim() : undefined,
       },
       asResponse: false,
     });
+
+    // ضمان حفظ وتحديث الصورة في جدول المستخدمين في حال تم تمريرها
+    if (image && response?.user?.id) {
+      await prisma.user.update({
+        where: { id: response.user.id },
+        data: { image: String(image).trim() },
+      });
+      response.user.image = String(image).trim();
+    }
 
     res.status(201).json({
       success: true,
@@ -53,7 +63,6 @@ export const registerUser = async (req: Request, res: Response): Promise<void> =
 
 export const loginUser = async (req: Request, res: Response): Promise<void> => {
   try {
-    
     const { identifier, email, phone, password } = req.body;
     const loginInput = (identifier || email || phone || "").trim();
 
@@ -67,7 +76,6 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
 
     let targetEmail = loginInput;
 
-    
     if (!loginInput.includes("@")) {
       const userByPhone = await prisma.user.findUnique({
         where: { phone: loginInput },
@@ -85,7 +93,6 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
       targetEmail = userByPhone.email;
     }
 
-    
     const response = await auth.api.signInEmail({
       body: {
         email: targetEmail,
@@ -111,7 +118,6 @@ export const loginUser = async (req: Request, res: Response): Promise<void> => {
 
 export const getMe = async (req: Request, res: Response): Promise<void> => {
   try {
-    
     const session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
@@ -140,7 +146,6 @@ export const getMe = async (req: Request, res: Response): Promise<void> => {
 
 export const updateProfile = async (req: Request, res: Response): Promise<void> => {
   try {
-    
     const session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
@@ -153,12 +158,12 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       return;
     }
 
-    const { name, phone } = req.body;
+    const { name, phone, image } = req.body;
 
-    if (!name && !phone) {
+    if (!name && !phone && image === undefined) {
       res.status(400).json({
         success: false,
-        message: "Please provide at least a name or phone to update",
+        message: "يرجى تقديم اسم أو رقم هاتف أو صورة شخصية للتحديث",
       });
       return;
     }
@@ -186,20 +191,21 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
       }
     }
 
-    
     const updatedUser = await prisma.user.update({
       where: {
         id: session.user.id, 
       },
       data: {
-        ...(name ? { name } : {}),
-        ...(phone ? { phone } : {}),
+        ...(name ? { name: String(name).trim() } : {}),
+        ...(trimmedPhone ? { phone: trimmedPhone } : {}),
+        ...(image !== undefined ? { image: image ? String(image).trim() : null } : {}),
       },
       select: {
         id: true,
         name: true,
         email: true,
         phone: true,
+        image: true,
         role: true,
         updatedAt: true,
       },
@@ -222,7 +228,6 @@ export const updateProfile = async (req: Request, res: Response): Promise<void> 
 
 export const deleteAccount = async (req: Request, res: Response): Promise<void> => {
   try {
-    
     const session = await auth.api.getSession({
       headers: fromNodeHeaders(req.headers),
     });
@@ -237,29 +242,23 @@ export const deleteAccount = async (req: Request, res: Response): Promise<void> 
 
     const userId = session.user.id;
 
-    
     await prisma.$transaction(async (tx) => {
-      
       await tx.orderItem.deleteMany({
         where: { order: { userId } },
       });
 
-      
       await tx.order.deleteMany({
         where: { userId },
       });
 
-      
       await tx.session.deleteMany({
         where: { userId },
       });
 
-      
       await tx.account.deleteMany({
         where: { userId },
       });
 
-      
       await tx.user.delete({
         where: { id: userId },
       });
