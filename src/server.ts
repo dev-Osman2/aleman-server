@@ -32,6 +32,7 @@ app.use(
         allowedOrigins.includes(origin) ||
         origin.endsWith(".aswany.me") ||
         origin.endsWith(".vercel.app") ||
+        origin.endsWith(".store") ||
         (!isProd &&
           (/^http:\/\/localhost(:\d+)?$/.test(origin) ||
             /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)));
