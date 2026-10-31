@@ -19,46 +19,37 @@ const allowedOrigins = [
   "https://aleman.aswany.me",
   "https://aleman-library.vercel.app",
   "https://daraleman.store",
+  "https://www.daraleman.store", 
   "http://localhost:3000",
   "http://127.0.0.1:3000",
 ].filter(Boolean) as string[];
 
-app.use(
-  cors({
-    origin: (origin, callback) => {
-      if (!origin) return callback(null, true);
+const corsOptions: cors.CorsOptions = {
+  origin: (origin, callback) => {
+    if (!origin) return callback(null, true);
 
-      const isAllowed =
-        allowedOrigins.includes(origin) ||
-        origin.endsWith(".aswany.me") ||
-        origin.endsWith(".vercel.app") ||
-        origin.endsWith(".store") ||
-        (!isProd &&
-          (/^http:\/\/localhost(:\d+)?$/.test(origin) ||
-            /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)));
+    const isAllowed =
+      allowedOrigins.includes(origin) ||
+      origin.endsWith(".aswany.me") ||
+      origin.endsWith(".vercel.app") ||
+      origin.endsWith(".store") ||
+      (!isProd &&
+        (/^http:\/\/localhost(:\d+)?$/.test(origin) ||
+          /^http:\/\/127\.0\.0\.1(:\d+)?$/.test(origin)));
 
-      if (isAllowed) {
-        return callback(null, true);
-      }
+    if (isAllowed) {
+      return callback(null, true);
+    }
 
-      return callback(null, false);
-    },
-    credentials: true,
-    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
-    allowedHeaders: [
-      "Content-Type",
-      "Authorization",
-      "Cookie",
-      "Cache-Control",
-      "Pragma",
-      "Expires",
-      "X-Requested-With",
-      "Accept",
-      "Origin",
-    ],
-    optionsSuccessStatus: 200,
-  })
-);
+    return callback(new Error(`Not allowed by CORS: ${origin}`));
+  },
+  credentials: true,
+  methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+  optionsSuccessStatus: 200,
+};
+
+app.use(cors(corsOptions));
+app.options("*", cors(corsOptions));
 
 app.use(express.json());
 
